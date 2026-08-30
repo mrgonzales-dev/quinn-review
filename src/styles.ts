@@ -39,11 +39,12 @@ export const STYLES = `
     min-width: var(--sidebar-width);
     background: var(--bg-secondary);
     border-right: 1px solid var(--border);
-    padding: 16px 0;
-    overflow-y: auto;
+    padding: 16px 0 0;
     height: 100vh;
     position: sticky;
     top: 0;
+    display: flex;
+    flex-direction: column;
   }
   .sidebar-header {
     padding: 0 16px 16px;
@@ -70,7 +71,17 @@ export const STYLES = `
     color: var(--text-muted);
     margin-top: 4px;
   }
-  .pr-list { list-style: none; }
+  .pr-list { list-style: none; flex: 1 1 auto; overflow-y: auto; }
+  .sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+  }
+  .back-to-projects {
+    color: var(--text-muted); text-decoration: none; font-size: 13px;
+    transition: color 0.2s;
+  }
+  .back-to-projects:hover { color: var(--accent); }
   .pr-item {
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
@@ -573,13 +584,25 @@ export const STYLES = `
   }
   .btn-danger:hover { background: #ff6a6b; }
 
-  /* div3 placeholder */
+  /* div3 instructions button */
   .div3 {
     background: var(--bg-secondary); border: 1px solid var(--border);
     border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     display: flex; align-items: center; justify-content: center;
-    color: var(--text-muted); font-size: 12px; text-align: center;
     padding: 20px;
+  }
+  .div3-instructions-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 12px; padding: 24px 32px; cursor: pointer;
+    font-size: 14px; font-weight: 500; transition: all 0.2s;
+  }
+  .div3-instructions-btn:hover {
+    border-color: var(--accent); color: var(--accent);
+    background: rgba(88,166,255,0.05);
+  }
+  .div3-instructions-btn svg {
+    width: 32px; height: 32px;
   }
 
   /* Theme colors for project folders */
@@ -597,15 +620,11 @@ export const STYLES = `
   .theme-teal:hover { border-color: rgba(57,197,207,0.5); box-shadow: 0 8px 24px rgba(57,197,207,0.1); }
 
   /* ── Project tabs in sidebar ─────────────────────────────────── */
-  .project-tabs {
-    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+  .project-badge {
+    display: inline-block; font-size: 12px; padding: 3px 10px;
+    border-radius: 6px; background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--text-muted); margin-top: 8px;
   }
-  .project-tab {
-    font-size: 11px; padding: 2px 8px; border-radius: 4px;
-    background: var(--bg-tertiary); border: 1px solid var(--border);
-    color: var(--text-muted); cursor: pointer; transition: all 0.15s;
-  }
-  .project-tab:hover { color: var(--text); border-color: var(--accent); }
   .project-tab.active {
     color: var(--accent); border-color: rgba(88,166,255,0.4);
     background: rgba(88,166,255,0.1);

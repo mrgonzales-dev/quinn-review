@@ -23,17 +23,13 @@ export function renderSidebar(project: Project, allProjects: Project[]): string 
     })
     .join("\n");
 
-  const projectTabs = allProjects.map(p =>
-    `<span class="project-tab ${p.id === project.id ? "active" : ""}" onclick="window.location.href='/?project=${encodeURIComponent(p.id)}'">${escapeHtml(p.name)}</span>`
-  ).join("");
-
   return `    <div class="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-brand">
           <img src="/quinn-logo.png" alt="Quinn" class="sidebar-logo" />
           <h1>Quinn</h1>
         </div>
-        <div class="project-tabs">${projectTabs}</div>
+        <span class="project-badge">${escapeHtml(project.name)}</span>
         <p>${project.prs.length} pull request${project.prs.length === 1 ? "" : "s"} for review</p>
         <div class="update-badge" id="update-badge" style="display:none;">
           <span class="update-badge-dot"></span>
@@ -44,5 +40,8 @@ export function renderSidebar(project: Project, allProjects: Project[]): string 
       <ul class="pr-list">
 ${items}
       </ul>
+      <div class="sidebar-footer">
+        <a class="back-to-projects" href="/">← All Projects</a>
+      </div>
     </div>`;
 }

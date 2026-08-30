@@ -1,5 +1,6 @@
-export function renderLanding(mcpPath: string): string {
-  return `    <div class="landing-overlay" id="landing-overlay">
+export function renderLanding(mcpPath: string, hidden: boolean = false): string {
+  const styleAttr = hidden ? ' style="display:none;"' : "";
+  return `    <div class="landing-overlay" id="landing-overlay"${styleAttr}>
       <div class="landing-modal">
         <img src="/quinn-logo.png" alt="Quinn" class="landing-logo" />
         <h1 class="landing-title">Welcome to Quinn</h1>

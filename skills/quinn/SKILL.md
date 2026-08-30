@@ -8,6 +8,8 @@ Quinn supports **multiple projects**. Each project is a separate folder with its
 
 ## Workflow
 
+**Important: Quinn must be used BEFORE you write any code.** Do not make changes to the user's files first and then send them for review. Analyze the codebase, plan your changes, send PRs through Quinn, and apply code only after the user approves.
+
 1. The user gives you a task (e.g., "add input validation to the login form").
 2. You analyze the relevant files in the user's codebase.
 3. Start the review server: `bun run server.ts`.

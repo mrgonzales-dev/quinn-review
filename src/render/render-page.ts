@@ -46,13 +46,12 @@ export function renderPage(data: QuinnData, mcpPath: string, selectedProjectId: 
   // Always render the projects grid so it is visible behind the landing overlay
   const projectsGrid = renderProjects(data.projects);
 
-  // If a project is selected via query param, show it even with zero PRs
-  // Otherwise, show the first project that has PRs
+  // If a project is selected via query param, show it
+  // Otherwise, show the dashboard (projects grid)
   const selected = selectedProjectId
     ? data.projects.find(p => p.id === selectedProjectId)
     : null;
-  const projectWithPRs = data.projects.find(p => p.prs.length > 0);
-  const activeProject = selected ?? projectWithPRs ?? null;
+  const activeProject = selected ?? null;
   const hasActiveProject = activeProject !== null;
   const projectId = activeProject?.id ?? "";
 
@@ -62,7 +61,7 @@ export function renderPage(data: QuinnData, mcpPath: string, selectedProjectId: 
         ? activeProject!.prs.map((pr, i) => renderPRContent(pr, i, projectId)).join("\n")
         : `    <div class="pr-empty">No PRs in this project yet. Send a PR from your AI agent to get started.</div>`)
     : "";
-  const landing = showLanding ? renderLanding(mcpPath) : "";
+  const landing = renderLanding(mcpPath, !showLanding);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -376,6 +375,11 @@ ${landing}
           body: JSON.stringify({ firstTimeSeen: true })
         }).catch(function(e) { console.error("Failed to save settings:", e); });
       }
+    }
+
+    function showLanding() {
+      var overlay = document.getElementById("landing-overlay");
+      if (overlay) overlay.style.display = "";
     }
 
     (function checkFirstTime() {
