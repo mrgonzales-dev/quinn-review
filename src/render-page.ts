@@ -308,7 +308,10 @@ ${landing}
     }
 
     function copyLandingCode(el) {
-      var text = el.textContent.replace("click to copy", "").trim();
+      var clone = el.cloneNode(true);
+      var hintClone = clone.querySelector(".copy-hint");
+      if (hintClone) hintClone.remove();
+      var text = clone.textContent.trim();
       navigator.clipboard.writeText(text);
       var hint = el.querySelector(".copy-hint");
       if (hint) {
