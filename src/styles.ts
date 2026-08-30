@@ -276,7 +276,7 @@ export const STYLES = `
 
   /* Comment input */
   .file-comment {
-    padding: 8px 16px; border-bottom: 1px solid var(--border);
+    padding: 8px 16px; border-top: 1px solid var(--border);
     background: var(--bg-tertiary);
   }
   .comment-input {
