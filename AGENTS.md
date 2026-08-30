@@ -34,6 +34,83 @@ All AI-generated text (chat, reports, code comments, documentation, explanations
 - Do not edit existing tests unless user explicitly says so.
 - Do not run test suite unless user explicitly says so.
 
+## Commit Format
+
+Use Conventional Commits. Every commit message must follow this format:
+
+```
+<type>(<scope>): <subject>
+
+<body>
+```
+
+### Type
+
+Pick one type per commit:
+
+| Type | Use when |
+|------|----------|
+| `feat` | New feature or capability added |
+| `fix` | Bug fix |
+| `refactor` | Code restructure with no behavior change |
+| `docs` | Documentation only (README, SKILL.md, CONTRIBUTING.md) |
+| `style` | Formatting, whitespace, CSS changes with no logic change |
+| `test` | Adding or changing tests |
+| `chore` | Build config, dependencies, tooling, gitignore |
+| `perf` | Performance improvement |
+| `ci` | CI/CD pipeline changes |
+| `revert` | Reverting a previous commit |
+
+### Scope
+
+Optional. Use the module or area name: `server`, `mcp`, `render`, `diff`, `styles`, `types`, `skill`, `api`.
+
+### Subject
+
+- Imperative mood: "add tool" not "added tool" or "adds tool".
+- Lowercase, no period at end.
+- Max 50 characters.
+- No emoji.
+
+### Body
+
+- Wrap at 72 characters.
+- Explain what changed and why. Not how.
+- One change per line, prefixed with `- `.
+- Separate subject and body with one blank line.
+
+### Rules
+
+- One logical change per commit. Do not mix features, fixes, and refactors in same commit.
+- Never use `--no-verify` to skip hooks.
+- Never use `--amend` on pushed commits.
+- Stage specific files. Do not use `git add -A`.
+- Write commit message with heredoc, not inline flags.
+
+### Examples
+
+```
+feat(mcp): add quinn_complete tool
+
+- Add tool definition to ListToolsRequestSchema handler
+- Add tool handler to CallToolRequestSchema handler
+- Maps to POST /api/complete endpoint on review server
+```
+
+```
+fix(render): escape file path in diff header
+
+- File paths with HTML characters caused broken rendering
+- Pass path through escapeHtml before inserting into template
+```
+
+```
+docs: update README with MCP setup instructions
+
+- Add MCP server section to getting started guide
+- Add .mcp.json to project structure diagram
+```
+
 ## Explanation and Reporting
 
 - **Always use behavior table.** When explaining or reporting on code, logic, calculations, or comparisons, present information in table format with columns for behavior, condition, and result. Do not use long paragraphs where table communicates same information more clearly.
