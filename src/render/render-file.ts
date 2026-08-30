@@ -42,7 +42,8 @@ ${renderDiffLines(file.diff)}
             placeholder="Optional comment (max 500 chars)"
             maxlength="500"
             onclick="event.stopPropagation()"
-            onkeydown="event.stopPropagation()" />
+            onkeydown="event.stopPropagation()"
+            onchange="saveComment('${idSuffix}')" />
         </div>
       </div>`;
 }

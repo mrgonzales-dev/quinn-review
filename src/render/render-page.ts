@@ -128,6 +128,17 @@ ${landing}
       return input ? input.value : "";
     }
 
+    function saveComment(idSuffix) {
+      var action = getBadgeAction(idSuffix);
+      if (!action) return;
+      var comment = getComment(idSuffix);
+      fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idSuffix: idSuffix, action: action, comment: comment })
+      }).catch(function(e) { console.error("Failed to save comment:", e); });
+    }
+
     function showCommentInput(idSuffix, show) {
       var el = document.getElementById("comment-" + idSuffix);
       if (el) el.style.display = show ? "" : "none";
