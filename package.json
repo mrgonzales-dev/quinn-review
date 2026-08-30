@@ -1,12 +1,19 @@
 {
-  "name": "quinn",
+  "name": "quinn-review",
   "version": "1.0.0",
   "description": "Quinn — AI code review skill that renders proposed changes as GitHub-style pull request pages",
   "type": "module",
   "scripts": {
     "start": "bun run server.ts",
-    "dev": "bun run server.ts"
+    "dev": "bun run server.ts",
+    "mcp": "bun run src/mcp-server.ts"
   },
-  "keywords": ["code-review", "pull-request", "ai-skill", "diff-viewer"],
-  "license": "MIT"
+  "bin": {
+    "quinn-mcp": "src/mcp-server.ts"
+  },
+  "keywords": ["code-review", "pull-request", "ai-skill", "diff-viewer", "mcp"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  }
 }

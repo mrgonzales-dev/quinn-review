@@ -1,0 +1,12 @@
+{
+  "name": "quinn",
+  "description": "AI code review skill that renders proposed changes as GitHub-style pull request pages for human review",
+  "version": "1.0.0",
+  "author": { "name": "mrgonzales-dev", "url": "https://github.com/mrgonzales-dev" },
+  "homepage": "https://github.com/mrgonzales-dev/quinn-review",
+  "repository": "https://github.com/mrgonzales-dev/quinn-review",
+  "license": "MIT",
+  "keywords": ["code-review", "pull-request", "diff-viewer", "ai-skill"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

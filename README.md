@@ -74,11 +74,13 @@ The agent handles all the technical work. You just review and decide.
 ## Project structure
 
 ```
-Quinn-Report-Skill/
+quinn-review/
 ├── server.ts              # Local review server
 ├── send-pr.ts             # Helper script for sending PRs
-├── skill.md               # Full skill documentation for AI agents
+├── skills/quinn/SKILL.md  # Full skill documentation for AI agents
 ├── AGENTS.md              # Agent behavior rules
+├── plugin.json            # Agent auto-discovery manifest
+├── .mcp.json              # MCP server config
 ├── package.json           # Project metadata
 ├── src/
 │   ├── render-page.ts     # Full HTML page renderer
