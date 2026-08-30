@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { execSync, spawn } from "node:child_process";
 import type { PRData, PRFile, DiffLine } from "./src/types.ts";
-import { renderPage } from "./src/render-page.ts";
+import { renderPage } from "./src/render/render-page.ts";
 
 const inputPath = resolve(process.argv[2] ?? "./pr-data.json");
 const reviewsPath = resolve(dirname(inputPath), "reviews.json");
@@ -149,6 +149,7 @@ function main() {
         const data = loadPRData();
         const mcpPath = resolve(import.meta.dir, "src/mcp-server.ts");
         const html = renderPage(data, mcpPath);
+
         return new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
@@ -391,7 +392,7 @@ function main() {
       const iconMatch = path.match(/^\/(favicon\.ico|favicon-16\.png|favicon-32\.png|apple-touch-icon\.png|icon-192\.png|icon-512\.png|quinn-logo\.png)$/);
       if (iconMatch) {
         try {
-          const iconPath = resolve(dirname(new URL(import.meta.url).pathname), "src", iconMatch[1]);
+          const iconPath = resolve(dirname(new URL(import.meta.url).pathname), "src", "assets", iconMatch[1]);
           const file = readFileSync(iconPath);
           const ext = iconMatch[1].endsWith(".ico") ? "image/x-icon" : "image/png";
           return new Response(file, {

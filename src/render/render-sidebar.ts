@@ -1,5 +1,5 @@
-import type { PRData } from "./types.ts";
-import { escapeHtml } from "./escape.ts";
+import type { PRData } from "../types.ts";
+import { escapeHtml } from "../escape.ts";
 
 export function renderSidebar(prs: PRData[]): string {
   const items = prs

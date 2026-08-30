@@ -1,9 +1,9 @@
-import type { PRData } from "./types.ts";
-import { STYLES } from "./styles.ts";
+import type { PRData } from "../types.ts";
+import { STYLES } from "../styles.ts";
 import { renderSidebar } from "./render-sidebar.ts";
 import { renderFile } from "./render-file.ts";
 import { renderLanding } from "./render-landing.ts";
-import { escapeHtml } from "./escape.ts";
+import { escapeHtml } from "../escape.ts";
 
 function renderPRContent(pr: PRData, prIndex: number): string {
   const totalAdditions = pr.files.reduce((sum, f) => sum + f.additions, 0);

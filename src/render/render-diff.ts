@@ -1,5 +1,5 @@
-import type { DiffLine } from "./types.ts";
-import { escapeHtml } from "./escape.ts";
+import type { DiffLine } from "../types.ts";
+import { escapeHtml } from "../escape.ts";
 
 export function renderDiffLines(diff: DiffLine[]): string {
   return diff

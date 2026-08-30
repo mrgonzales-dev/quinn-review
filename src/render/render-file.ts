@@ -1,6 +1,6 @@
-import type { PRFile } from "./types.ts";
+import type { PRFile } from "../types.ts";
 import { renderDiffLines } from "./render-diff.ts";
-import { escapeHtml } from "./escape.ts";
+import { escapeHtml } from "../escape.ts";
 
 export function renderFile(file: PRFile, fileIndex: number, prIndex: number): string {
   const statusLabel =
