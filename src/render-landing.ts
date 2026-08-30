@@ -18,8 +18,8 @@ export function renderLanding(): string {
           <div class="landing-step">
             <span class="landing-step-num">2</span>
             <div class="landing-step-content">
-              <div class="landing-step-title">Connect your AI agent</div>
-              <div class="landing-step-desc">Start Quinn with one command. The review server and MCP server both start together. Add Quinn as an MCP server in your agent config.</div>
+              <div class="landing-step-title">Start the review server</div>
+              <div class="landing-step-desc">Start Quinn with one command. The review server and MCP server both start together. The web UI opens at localhost:2400.</div>
               <div class="landing-code" onclick="copyLandingCode(this)">bun run server.ts<span class="copy-hint">click to copy</span></div>
             </div>
           </div>
@@ -27,13 +27,22 @@ export function renderLanding(): string {
           <div class="landing-step">
             <span class="landing-step-num">3</span>
             <div class="landing-step-content">
+              <div class="landing-step-title">Connect your AI agent</div>
+              <div class="landing-step-desc">Agents that support .mcp.json auto-detection (Claude Code, Cursor, Windsurf) will find Quinn automatically — just open this project. For manual setup, add this to your agent MCP config:</div>
+              <div class="landing-code" onclick="copyLandingCode(this)">{ "mcpServers": { "quinn": { "command": "bun", "args": ["run", "src/mcp-server.ts"] } } }<span class="copy-hint">click to copy</span></div>
+            </div>
+          </div>
+
+          <div class="landing-step">
+            <span class="landing-step-num">4</span>
+            <div class="landing-step-content">
               <div class="landing-step-title">Give the agent a task</div>
               <div class="landing-step-desc">Ask your AI agent to make changes. The agent sends proposed PRs to this server. They appear here for your review.</div>
             </div>
           </div>
 
           <div class="landing-step">
-            <span class="landing-step-num">4</span>
+            <span class="landing-step-num">5</span>
             <div class="landing-step-content">
               <div class="landing-step-title">Review and decide</div>
               <div class="landing-step-desc">Approve or reject each file. The agent applies only what you approve. Nothing gets written until you say yes.</div>
