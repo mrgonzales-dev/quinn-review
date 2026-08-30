@@ -104,24 +104,14 @@ ${landing}
     function applyBadgeState(idSuffix, action) {
       var badge = document.getElementById("badge-" + idSuffix);
       if (!badge) return;
-      var diff = document.getElementById("diff-" + idSuffix);
-      var chevron = document.getElementById("chevron-" + idSuffix);
       if (action === null) {
         badge.className = "file-review-badge";
         badge.textContent = "";
-        if (diff) diff.classList.remove("collapsed");
-        if (chevron) chevron.classList.remove("collapsed");
       } else {
         badge.className = "file-review-badge show " + action;
         badge.textContent = action === "approved"
           ? "Approved — ready to apply"
           : "Rejected — will not apply";
-        if (action === "approved") {
-          if (diff && !diff.classList.contains("collapsed")) {
-            diff.classList.add("collapsed");
-            chevron.classList.add("collapsed");
-          }
-        }
       }
     }
 
