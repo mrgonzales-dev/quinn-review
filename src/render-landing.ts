@@ -1,4 +1,4 @@
-export function renderLanding(): string {
+export function renderLanding(mcpPath: string): string {
   return `    <div class="landing-overlay" id="landing-overlay">
       <div class="landing-modal">
         <img src="/quinn-logo.png" alt="Quinn" class="landing-logo" />
@@ -29,7 +29,14 @@ export function renderLanding(): string {
             <div class="landing-step-content">
               <div class="landing-step-title">Connect your AI agent</div>
               <div class="landing-step-desc">Agents that support .mcp.json auto-detection (Claude Code, Cursor, Windsurf) will find Quinn automatically — just open this project. For manual setup, add this to your agent MCP config:</div>
-              <div class="landing-code" onclick="copyLandingCode(this)">{ "mcpServers": { "quinn": { "command": "bun", "args": ["run", "src/mcp-server.ts"] } } }<span class="copy-hint">click to copy</span></div>
+              <div class="landing-code landing-code-block" onclick="copyLandingCode(this)">{
+  "mcpServers": {
+    "quinn": {
+      "command": "bun",
+      "args": ["run", "${mcpPath}"]
+    }
+  }
+}<span class="copy-hint">click to copy</span></div>
             </div>
           </div>
 

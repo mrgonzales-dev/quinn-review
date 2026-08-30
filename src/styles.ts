@@ -132,6 +132,12 @@ export const STYLES = `
   }
   .pr-item-meta .stat-additions { color: #7ee787; }
   .pr-item-meta .stat-deletions { color: #ff8182; }
+  .pr-item-label {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 11px; font-weight: 600; color: var(--accent);
+    background: rgba(88,166,255,0.12); border: 1px solid rgba(88,166,255,0.3);
+    padding: 1px 6px; border-radius: 4px;
+  }
   .pr-item-files {
     font-size: 11px;
     color: var(--text-muted);
@@ -354,6 +360,9 @@ export const STYLES = `
   .landing-code .copy-hint {
     color: var(--text-muted); font-size: 10px; float: right;
   }
+  .landing-code-block {
+    white-space: pre; overflow-x: auto; padding: 14px;
+  }
   .landing-waiting {
     margin-top: 24px; padding: 12px; border-radius: 6px;
     background: rgba(88,166,255,0.06); border: 1px solid rgba(88,166,255,0.2);
@@ -368,7 +377,4 @@ export const STYLES = `
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
-
-  /* Footer */
-  .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; text-align: center; }
 `;

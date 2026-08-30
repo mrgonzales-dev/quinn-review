@@ -18,6 +18,7 @@ export interface PRData {
   title: string;
   description: string;
   branch: string;
+  label?: string;
   files: PRFile[];
   completed?: boolean;
 }

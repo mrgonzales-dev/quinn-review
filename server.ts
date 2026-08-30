@@ -113,6 +113,7 @@ function validatePR(pr: unknown): string | null {
     return "PR description must be a non-empty string";
   }
   if (typeof p.branch !== "string" || !p.branch) return "PR branch must be a non-empty string";
+  if (p.label !== undefined && typeof p.label !== "string") return "PR label must be a string";
   if (!Array.isArray(p.files) || p.files.length === 0) {
     return "PR files must be a non-empty array";
   }
@@ -146,7 +147,8 @@ function main() {
       // Serve the review page
       if (path === "/" || path === "/index.html") {
         const data = loadPRData();
-        const html = renderPage(data);
+        const mcpPath = resolve(import.meta.dir, "src/mcp-server.ts");
+        const html = renderPage(data, mcpPath);
         return new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
@@ -190,6 +192,40 @@ function main() {
         return json({ ok: true });
       }
 
+      // POST a batch of PRs (up to 5)
+      if (path === "/api/prs/batch" && req.method === "POST") {
+        const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
+        if (contentLength > MAX_BODY_SIZE) {
+          return json({ error: "Request body too large (max 10 MB)" }, 413);
+        }
+        try {
+          const body = await req.json();
+          if (!Array.isArray(body) || body.length === 0) {
+            return json({ error: "Batch must be a non-empty array of PRs" }, 400);
+          }
+          if (body.length > 5) {
+            return json({ error: "Batch must contain at most 5 PRs" }, 400);
+          }
+          const errors: string[] = [];
+          for (let i = 0; i < body.length; i++) {
+            const err = validatePR(body[i]);
+            if (err) errors.push(`PR ${i}: ${err}`);
+          }
+          if (errors.length > 0) {
+            return json({ error: "Validation failed", details: errors }, 400);
+          }
+          const data = loadPRData();
+          const startIndex = data.length;
+          for (const pr of body) {
+            data.push(pr as PRData);
+          }
+          savePRData(data);
+          return json({ ok: true, startIndex, count: body.length, total: data.length });
+        } catch {
+          return json({ error: "Bad request body" }, 400);
+        }
+      }
+
       // GET a single PR by index
       const prGetMatch = path.match(/^\/api\/pr\/(\d+)$/);
       if (prGetMatch && req.method === "GET") {
@@ -211,6 +247,42 @@ function main() {
         data.splice(index, 1);
         savePRData(data);
         return json({ ok: true, total: data.length });
+      }
+
+      // PUT (update) a single PR by index — replaces PR, clears reviews, resets completed
+      if (prGetMatch && req.method === "PUT") {
+        const index = parseInt(prGetMatch[1], 10);
+        const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
+        if (contentLength > MAX_BODY_SIZE) {
+          return json({ error: "Request body too large (max 10 MB)" }, 413);
+        }
+        try {
+          const body = await req.json();
+          const err = validatePR(body);
+          if (err) return json({ error: err }, 400);
+          const data = loadPRData();
+          if (index < 0 || index >= data.length) {
+            return json({ error: "PR index out of range" }, 400);
+          }
+          const updated = body as PRData;
+          updated.completed = false;
+          data[index] = updated;
+          savePRData(data);
+          // Remove all reviews for this PR
+          const reviews = loadReviews();
+          const prefix = `${index}-`;
+          let removed = 0;
+          for (const key of Object.keys(reviews)) {
+            if (key.startsWith(prefix)) {
+              delete reviews[key];
+              removed++;
+            }
+          }
+          saveReviews(reviews);
+          return json({ ok: true, index, reviewsCleared: removed });
+        } catch {
+          return json({ error: "Bad request body" }, 400);
+        }
       }
 
       // GET all reviews
@@ -315,16 +387,18 @@ function main() {
         }
       }
 
-      // Serve the Quinn logo
-      if (path === "/quinn-logo.png") {
+      // Serve static icons (favicon, apple-touch-icon, etc.)
+      const iconMatch = path.match(/^\/(favicon\.ico|favicon-16\.png|favicon-32\.png|apple-touch-icon\.png|icon-192\.png|icon-512\.png|quinn-logo\.png)$/);
+      if (iconMatch) {
         try {
-          const logoPath = resolve(dirname(new URL(import.meta.url).pathname), "src/quinn-logo.png");
-          const file = readFileSync(logoPath);
+          const iconPath = resolve(dirname(new URL(import.meta.url).pathname), "src", iconMatch[1]);
+          const file = readFileSync(iconPath);
+          const ext = iconMatch[1].endsWith(".ico") ? "image/x-icon" : "image/png";
           return new Response(file, {
-            headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" },
+            headers: { "Content-Type": ext, "Cache-Control": "public, max-age=3600" },
           });
         } catch {
-          return new Response("Logo not found", { status: 404 });
+          return new Response("Icon not found", { status: 404 });
         }
       }
 

@@ -13,6 +13,7 @@ export function renderSidebar(prs: PRData[]): string {
         <div class="pr-item-title">${escapeHtml(pr.title)}</div>
         <div class="pr-item-branch">${escapeHtml(pr.branch)}</div>
         <div class="pr-item-meta">
+          <span class="pr-item-label">#${index}${pr.label ? ' · ' + escapeHtml(pr.label) : ''}</span>
           <span class="stat-additions">+${totalAdditions}</span>
           <span class="stat-deletions">-${totalDeletions}</span>
           <span>${fileCount} ${fileLabel}</span>
