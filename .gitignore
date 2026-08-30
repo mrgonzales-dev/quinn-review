@@ -1,6 +1,7 @@
 # Runtime data
 pr-data.json
 reviews.json
+comments.json
 
 # Build output
 dist/
