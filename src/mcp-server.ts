@@ -97,10 +97,10 @@ Quinn supports multiple projects. Each project is a separate folder with its own
 ## Workflow
 
 1. Call quinn_start to verify the review server is running.
-2. Call quinn_list_projects to see existing projects. If none exist or you need a new one, call quinn_create_project with a name and optional theme (blue, green, purple, orange, red, teal).
+2. Call quinn_list_projects to see existing projects. If none exist or you need a new one, call quinn_create_project with a name, the project's filesystem path (so Quinn can read existing files and compute diffs), and optional theme (blue, green, purple, orange, red, teal).
 3. Call quinn_clear to reset any old PRs in the project from a previous session.
 4. Make your changes in the codebase.
-5. Build PRs from your changes. Call quinn_send_pr for a single PR, or quinn_send_batch for up to 5 PRs at once. Pass the projectId for the project you want to send to. Give each PR a short label (e.g. "bugfix", "feature", "refactor") so the user can identify it easily. You do not need to count additions or deletions — the server computes them from the diff array.
+5. Build PRs from your changes. Call quinn_send_pr for a single PR, or quinn_send_batch for up to 5 PRs at once. Pass the projectId for the project you want to send to. Give each PR a short label (e.g. "bugfix", "feature", "refactor") so the user can identify it easily. Send only the full new file content as 'content' for each file — Quinn reads the existing file from disk and computes the diff automatically. You do not need to send oldContent or diff arrays.
 6. Tell the user to review the changes at http://localhost:2400.
 7. Call quinn_list_prs with the projectId to see all PRs with their indices, labels, and per-file review verdicts (approved/rejected/pending). Call quinn_get_pr to see full content of a specific PR. Call quinn_reviews to get the raw review map.
 8. If the user requested changes to a PR, call quinn_update_pr with the projectId, prIndex, and updated content. This clears old reviews and puts the PR back up for review.
@@ -214,12 +214,14 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Each project holds its own set of PRs and reviews. " +
         "The project ID is auto-generated from the name (slugified). " +
         "Use this when working on a different codebase or feature set that should be reviewed separately. " +
-        "Themes: blue, green, purple, orange, red, teal. Defaults to blue.",
+        "Themes: blue, green, purple, orange, red, teal. Defaults to blue. " +
+        "Pass 'path' to set the filesystem root so Quinn can read existing files and compute diffs automatically.",
       inputSchema: {
         type: "object",
         properties: {
           name: { type: "string", description: "Project name (e.g. 'My Cool App')" },
           theme: { type: "string", enum: ["blue", "green", "purple", "orange", "red", "teal"], description: "Color theme for the project folder. Defaults to blue." },
+          path: { type: "string", description: "Filesystem root path of the project. Quinn reads existing files from here to compute diffs. Pass the project's root directory." },
         },
         required: ["name"],
       },
@@ -236,23 +238,17 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
       name: "quinn_send_pr",
       description:
         "Send a single proposed pull request for human review. " +
-        "The PR contains a title, description, branch name, and files with diffs and explanations. " +
+        "The PR contains a title, description, branch name, and files with content and explanations. " +
         "The user reviews it in their browser at http://localhost:2400. " +
         "\n\n" +
-        "PREFERRED FORMAT — content-based (saves tokens): " +
-        "Send the full new file content as a 'content' string. " +
-        "For modified files, also send 'oldContent' (the original file text). " +
-        "The server computes the diff automatically. " +
-        "This avoids writing per-line JSON diff objects. " +
-        "\n\n" +
-        "ALTERNATIVE FORMAT — diff-based: " +
-        "Send a 'diff' array with line-by-line objects (type, oldNumber, newNumber, content). " +
-        "Include 1-3 context lines around each change. " +
+        "FORMAT: Send the full new file content as a 'content' string for each file. " +
+        "Quinn reads the existing file from the project's filesystem path (set during quinn_create_project) " +
+        "and computes the diff automatically. You do NOT need to send oldContent or diff arrays. " +
         "\n\n" +
         "Group related changes into one PR. One PR per goal or feature, not one PR per fix. " +
         "Each file needs a specific explanation of what changed and why. " +
         "\n\n" +
-        "Sample (content-based):\n" +
+        "Sample:\n" +
         '{\n' +
         '  "title": "Fix path traversal in /api/tree",\n' +
         '  "description": "Resolve path relative to PTY root. Use realpathSync for symlink safety.",\n' +
@@ -261,7 +257,6 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         '    "path": "server.js",\n' +
         '    "status": "modified",\n' +
         '    "content": "full new file text here",\n' +
-        '    "oldContent": "full old file text here",\n' +
         '    "explanation": "Resolve relative to PTY root, not server cwd. Use realpathSync for symlink safety."\n' +
         '  }]\n' +
         '}',
@@ -275,44 +270,18 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           label: { type: "string", description: "Short label for the PR (e.g. 'bugfix', 'feature', 'refactor'). Shown as a badge in the sidebar so the user can identify PRs easily." },
           files: {
             type: "array",
-            description: "List of files in the PR. Each file needs either 'content' (preferred) or 'diff' array, plus an explanation.",
+            description: "List of files in the PR. Each file needs 'content' (full new file text) and an explanation.",
             items: {
               type: "object",
               properties: {
-                path: { type: "string", description: "File path" },
+                path: { type: "string", description: "File path relative to the project root" },
                 status: { type: "string", enum: ["added", "modified", "deleted"], description: "File change status" },
                 content: {
                   type: "string",
                   description:
-                    "PREFERRED: Full new file content as a string. Server computes the diff automatically. " +
-                    "For 'added' files, only this is needed. For 'modified' files, also send 'oldContent'. " +
-                    "For 'deleted' files, send 'content' with the old file text or use 'oldContent'.",
-                },
-                oldContent: {
-                  type: "string",
-                  description:
-                    "Original file content (before changes). Used with 'content' for 'modified' status. " +
-                    "The server diffs oldContent against content to produce the review diff.",
-                },
-                additions: { type: "number", description: "Number of added lines (optional — server auto-computes)" },
-                deletions: { type: "number", description: "Number of removed lines (optional — server auto-computes)" },
-                diff: {
-                  type: "array",
-                  description:
-                    "ALTERNATIVE: Line-by-line diff. Split into separate hunks per logical change. " +
-                    "Include 1-3 context lines around each change. " +
-                    "Each line: type (context/added/removed), oldNumber, newNumber, content. " +
-                    "Use 'content' instead to save tokens.",
-                  items: {
-                    type: "object",
-                    properties: {
-                      type: { type: "string", enum: ["context", "added", "removed"] },
-                      oldNumber: { type: ["number", "null"], description: "Old line number, null for added lines" },
-                      newNumber: { type: ["number", "null"], description: "New line number, null for removed lines" },
-                      content: { type: "string", description: "Line content" },
-                    },
-                    required: ["type", "oldNumber", "newNumber", "content"],
-                  },
+                    "Full new file content as a string. Quinn reads the existing file from disk " +
+                    "and computes the diff automatically. Required for 'added' and 'modified' files. " +
+                    "For 'deleted' files, Quinn reads the file from disk to show what is being removed.",
                 },
                 explanation: {
                   type: "string",
@@ -321,7 +290,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     "Bad: 'Fixed bugs'. Good: 'Added realpathSync to path containment check to prevent symlink traversal (BUG_002)'.",
                 },
               },
-              required: ["path", "status", "explanation"],
+              required: ["path", "status", "content", "explanation"],
             },
           },
         },
@@ -350,7 +319,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Update an existing PR by index. Replaces the PR content (title, description, branch, files). " +
         "Clears all review decisions for that PR and resets completed status, putting it back up for review. " +
         "Use this when the user requested changes to a PR you already submitted. " +
-        "Same format as quinn_send_pr: prefer 'content' over 'diff' to save tokens.",
+        "Same format as quinn_send_pr: send 'content' (full new file text) for each file.",
       inputSchema: {
         type: "object",
         properties: {
@@ -362,39 +331,17 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           label: { type: "string", description: "Short label for the PR (e.g. 'bugfix', 'feature', 'refactor'). Shown as a badge in the sidebar so the user can identify PRs easily." },
           files: {
             type: "array",
-            description: "List of files in the PR. Each file needs either 'content' (preferred) or 'diff' array, plus an explanation.",
+            description: "List of files in the PR. Each file needs 'content' (full new file text) and an explanation.",
             items: {
               type: "object",
               properties: {
-                path: { type: "string", description: "File path" },
+                path: { type: "string", description: "File path relative to the project root" },
                 status: { type: "string", enum: ["added", "modified", "deleted"], description: "File change status" },
                 content: {
                   type: "string",
                   description:
-                    "PREFERRED: Full new file content as a string. Server computes the diff automatically. " +
-                    "For 'modified' files, also send 'oldContent'.",
-                },
-                oldContent: {
-                  type: "string",
-                  description: "Original file content (before changes). Used with 'content' for 'modified' status.",
-                },
-                additions: { type: "number", description: "Number of added lines (optional — server auto-computes)" },
-                deletions: { type: "number", description: "Number of removed lines (optional — server auto-computes)" },
-                diff: {
-                  type: "array",
-                  description:
-                    "ALTERNATIVE: Line-by-line diff. Include 1-3 context lines around each change. " +
-                    "Use 'content' instead to save tokens.",
-                  items: {
-                    type: "object",
-                    properties: {
-                      type: { type: "string", enum: ["context", "added", "removed"] },
-                      oldNumber: { type: ["number", "null"], description: "Old line number, null for added lines" },
-                      newNumber: { type: ["number", "null"], description: "New line number, null for removed lines" },
-                      content: { type: "string", description: "Line content" },
-                    },
-                    required: ["type", "oldNumber", "newNumber", "content"],
-                  },
+                    "Full new file content as a string. Quinn reads the existing file from disk " +
+                    "and computes the diff automatically.",
                 },
                 explanation: {
                   type: "string",
@@ -403,7 +350,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     "Bad: 'Fixed bugs'. Good: 'Added realpathSync to path containment check to prevent symlink traversal (BUG_002)'.",
                 },
               },
-              required: ["path", "status", "explanation"],
+              required: ["path", "status", "content", "explanation"],
             },
           },
         },
@@ -417,7 +364,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Each PR follows the same format as quinn_send_pr. " +
         "Use this when you have 2-5 PRs ready to review. " +
         "\n\n" +
-        "Prefer 'content' over 'diff' to save tokens. Write specific explanations.",
+        "Send 'content' (full new file text) for each file. Write specific explanations.",
       inputSchema: {
         type: "object",
         properties: {
@@ -442,31 +389,11 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                       status: { type: "string", enum: ["added", "modified", "deleted"] },
                       content: {
                         type: "string",
-                        description: "PREFERRED: Full new file content. Server computes diff. For 'modified', also send 'oldContent'.",
-                      },
-                      oldContent: {
-                        type: "string",
-                        description: "Original file content. Used with 'content' for 'modified' status.",
-                      },
-                      additions: { type: "number" },
-                      deletions: { type: "number" },
-                      diff: {
-                        type: "array",
-                        description: "ALTERNATIVE: Line-by-line diff. Use 'content' instead to save tokens.",
-                        items: {
-                          type: "object",
-                          properties: {
-                            type: { type: "string", enum: ["context", "added", "removed"] },
-                            oldNumber: { type: ["number", "null"] },
-                            newNumber: { type: ["number", "null"] },
-                            content: { type: "string" },
-                          },
-                          required: ["type", "oldNumber", "newNumber", "content"],
-                        },
+                        description: "Full new file content. Quinn reads existing file from disk and computes diff.",
                       },
                       explanation: { type: "string" },
                     },
-                    required: ["path", "status", "explanation"],
+                    required: ["path", "status", "content", "explanation"],
                   },
                 },
               },
@@ -549,7 +476,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "quinn_create_project": {
-        const result = await apiPost("/api/project", { name: args?.name, theme: args?.theme });
+        const result = await apiPost("/api/project", { name: args?.name, theme: args?.theme, path: args?.path });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 

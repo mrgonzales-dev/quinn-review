@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { writeFileSync, existsSync, unlinkSync, mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
 const TEST_PORT = 2499;
 const TEST_DATA = resolve(import.meta.dir, "quinn-data.json");
+const TEST_PROJECT_DIR = resolve(import.meta.dir, "test-project");
 
 function cleanup(): void {
   if (existsSync(TEST_DATA)) unlinkSync(TEST_DATA);
+  if (existsSync(TEST_PROJECT_DIR)) rmSync(TEST_PROJECT_DIR, { recursive: true, force: true });
 }
 
 const BASE = `http://localhost:${TEST_PORT}`;
@@ -47,12 +49,8 @@ function makePR(overrides: Record<string, unknown> = {}): Record<string, unknown
     files: [
       {
         path: "src/main.ts",
-        status: "modified",
-        diff: [
-          { type: "context", oldNumber: 1, newNumber: 1, content: "import { foo } from 'bar';" },
-          { type: "removed", oldNumber: 2, newNumber: null, content: "const x = 1;" },
-          { type: "added", oldNumber: null, newNumber: 2, content: "const x = 2;" },
-        ],
+        status: "added",
+        content: "const x = 2;\n",
         explanation: "Changed x from 1 to 2",
       },
     ],
@@ -65,6 +63,8 @@ describe("server endpoints", () => {
 
   beforeAll(async () => {
     cleanup();
+    mkdirSync(TEST_PROJECT_DIR, { recursive: true });
+    mkdirSync(resolve(TEST_PROJECT_DIR, "src"), { recursive: true });
     process.env.QUINN_PORT = String(TEST_PORT);
     process.env.QUINN_DATA = TEST_DATA;
     const mod = await import("../server.ts");
@@ -117,14 +117,15 @@ describe("server endpoints", () => {
       expect(result).toEqual([]);
     });
 
-    it("POST /api/project creates a project with name and theme", async () => {
-      const result = await postJSON("/api/project", { name: "My App", theme: "blue" }) as {
-        ok: boolean; id: string; name: string; theme: string;
+    it("POST /api/project creates a project with name, theme, and path", async () => {
+      const result = await postJSON("/api/project", { name: "My App", theme: "blue", path: TEST_PROJECT_DIR }) as {
+        ok: boolean; id: string; name: string; theme: string; path: string;
       };
       expect(result.ok).toBe(true);
       expect(result.id).toBe("my-app");
       expect(result.name).toBe("My App");
       expect(result.theme).toBe("blue");
+      expect(result.path).toBe(TEST_PROJECT_DIR);
     });
 
     it("GET /api/projects returns created project", async () => {
@@ -197,7 +198,7 @@ describe("server endpoints", () => {
     const PROJ = "pr-test-proj";
 
     async function ensureProject(): Promise<void> {
-      await postJSON("/api/project", { name: "PR Test Proj", theme: "purple" });
+      await postJSON("/api/project", { name: "PR Test Proj", theme: "purple", path: TEST_PROJECT_DIR });
     }
 
     it("POST /api/project/:id/pr adds a PR to a project", async () => {
@@ -222,7 +223,7 @@ describe("server endpoints", () => {
     it("auto-computes additions and deletions from diff", async () => {
       const pr = await getJSON(`/api/project/${PROJ}/pr/0`) as { files: Array<{ additions: number; deletions: number }> };
       expect(pr.files[0].additions).toBe(1);
-      expect(pr.files[0].deletions).toBe(1);
+      expect(pr.files[0].deletions).toBe(0);
     });
 
     it("POST /api/project/:id/pr rejects invalid PR", async () => {
@@ -283,13 +284,13 @@ describe("server endpoints", () => {
     });
   });
 
-  // ── Content-based format ──────────────────────────────────────
+  // ── Content-based format with disk reads ──────────────────────
 
-  describe("content-based PR format", () => {
+  describe("content-based PR format with disk reads", () => {
     const PROJ = "content-test-proj";
 
     beforeAll(async () => {
-      await postJSON("/api/project", { name: "Content Test Proj", theme: "blue" });
+      await postJSON("/api/project", { name: "Content Test Proj", theme: "blue", path: TEST_PROJECT_DIR });
     });
 
     it("accepts content for added file and computes diff", async () => {
@@ -315,16 +316,19 @@ describe("server endpoints", () => {
       expect(fetched.files[0].diff.every(d => d.type === "added")).toBe(true);
     });
 
-    it("accepts content + oldContent for modified file and computes diff", async () => {
+    it("computes diff for modified file by reading old content from disk", async () => {
+      // Write an existing file to the project directory
+      const filePath = resolve(TEST_PROJECT_DIR, "modified.ts");
+      writeFileSync(filePath, "const x = 1;\nconst y = 2;\n", "utf-8");
+
       const pr = {
         title: "Content Modified",
-        description: "Test content-based modified file",
+        description: "Test content-based modified file with disk read",
         branch: "test/content-modified",
         files: [{
           path: "modified.ts",
           status: "modified",
           content: "const x = 2;\nconst y = 3;\n",
-          oldContent: "const x = 1;\nconst y = 2;\n",
           explanation: "Changed x and y values",
         }],
       };
@@ -343,22 +347,25 @@ describe("server endpoints", () => {
       expect(removedLines.map(d => d.content)).toEqual(["const x = 1;", "const y = 2;"]);
     });
 
-    it("rejects file with neither content nor diff", async () => {
+    it("rejects file with no content", async () => {
       const pr = {
-        title: "No Content No Diff",
+        title: "No Content",
         description: "Should fail",
         branch: "test/none",
         files: [{
           path: "empty.ts",
           status: "modified",
-          explanation: "Missing both content and diff",
+          explanation: "Missing content",
         }],
       };
       const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
       expect(result.error).toContain("content");
     });
 
-    it("rejects file with identical content and oldContent", async () => {
+    it("rejects modified file with identical content to disk", async () => {
+      const filePath = resolve(TEST_PROJECT_DIR, "same.ts");
+      writeFileSync(filePath, "const x = 1;\n", "utf-8");
+
       const pr = {
         title: "No Changes",
         description: "Should fail",
@@ -367,7 +374,6 @@ describe("server endpoints", () => {
           path: "same.ts",
           status: "modified",
           content: "const x = 1;\n",
-          oldContent: "const x = 1;\n",
           explanation: "No actual changes",
         }],
       };
@@ -375,40 +381,75 @@ describe("server endpoints", () => {
       expect(result.error).toContain("empty");
     });
 
-    it("still accepts diff-based format (backward compatibility)", async () => {
-      const result = await postJSON(`/api/project/${PROJ}/pr`, makePR({ title: "Diff Format OK" })) as { ok: boolean };
-      expect(result.ok).toBe(true);
-    });
-
-    it("content takes precedence when both content and diff are provided", async () => {
+    it("treats modified file as added when file does not exist on disk", async () => {
       const pr = {
-        title: "Both Formats",
-        description: "Content should win",
-        branch: "test/both",
+        title: "Modified But New",
+        description: "File does not exist on disk yet",
+        branch: "test/modified-new",
         files: [{
-          path: "precedence.ts",
-          status: "added",
+          path: "does-not-exist.ts",
+          status: "modified",
           content: "const z = 99;\n",
-          diff: [
-            { type: "added", oldNumber: null, newNumber: 1, content: "const wrong = 0;" },
-          ],
-          explanation: "Testing precedence",
+          explanation: "File is new but status was modified",
         }],
       };
       const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { ok: boolean; index: number };
       expect(result.ok).toBe(true);
 
       const fetched = await getJSON(`/api/project/${PROJ}/pr/${result.index}`) as {
-        files: Array<{ diff: Array<{ content: string }> }>;
+        files: Array<{ status: string; additions: number; deletions: number }>;
       };
-      expect(fetched.files[0].diff[0].content).toBe("const z = 99;");
+      expect(fetched.files[0].status).toBe("added");
+      expect(fetched.files[0].additions).toBe(1);
+      expect(fetched.files[0].deletions).toBe(0);
+    });
+
+    it("computes deleted diff by reading old content from disk", async () => {
+      const filePath = resolve(TEST_PROJECT_DIR, "to-delete.ts");
+      writeFileSync(filePath, "line1\nline2\nline3\n", "utf-8");
+
+      const pr = {
+        title: "Delete File",
+        description: "Delete a file that exists on disk",
+        branch: "test/delete",
+        files: [{
+          path: "to-delete.ts",
+          status: "deleted",
+          content: "",
+          explanation: "Removing this file",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { ok: boolean; index: number };
+      expect(result.ok).toBe(true);
+
+      const fetched = await getJSON(`/api/project/${PROJ}/pr/${result.index}`) as {
+        files: Array<{ diff: Array<{ type: string }>; additions: number; deletions: number }>;
+      };
+      expect(fetched.files[0].additions).toBe(0);
+      expect(fetched.files[0].deletions).toBe(3);
+      expect(fetched.files[0].diff.every(d => d.type === "removed")).toBe(true);
+    });
+
+    it("rejects deleted file that does not exist on disk", async () => {
+      const pr = {
+        title: "Delete Nonexistent",
+        description: "Should fail",
+        branch: "test/delete-nonexistent",
+        files: [{
+          path: "no-such-file.ts",
+          status: "deleted",
+          content: "",
+          explanation: "File does not exist",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("does not exist");
     });
   });
 
   // ── Diff computation unit tests ────────────────────────────────
 
   describe("diff computation", () => {
-    // Import the diff functions directly
     const { computeDiff, computeAddedDiff, computeDeletedDiff } = require("../src/diff.ts");
 
     it("computeDiff produces correct added/removed lines", () => {
@@ -486,7 +527,7 @@ describe("server endpoints", () => {
     const PROJ = "review-test-proj";
 
     async function ensureProject(): Promise<void> {
-      await postJSON("/api/project", { name: "Review Test Proj", theme: "teal" });
+      await postJSON("/api/project", { name: "Review Test Proj", theme: "teal", path: TEST_PROJECT_DIR });
       await postJSON(`/api/project/${PROJ}/pr`, makePR({ title: "Review PR" }));
     }
 
@@ -561,7 +602,7 @@ describe("server endpoints", () => {
     const PROJ = "complete-test-proj";
 
     it("POST /api/project/:id/complete marks PR as completed", async () => {
-      await postJSON("/api/project", { name: "Complete Test Proj", theme: "red" });
+      await postJSON("/api/project", { name: "Complete Test Proj", theme: "red", path: TEST_PROJECT_DIR });
       await postJSON(`/api/project/${PROJ}/pr`, makePR({ title: "Complete Me" }));
 
       const result = await postJSON(`/api/project/${PROJ}/complete`, { prIndex: 0 }) as { ok: boolean };
@@ -591,7 +632,7 @@ describe("server endpoints", () => {
     const PROJ = "rekey-test-proj";
 
     async function setupRekeyProject(): Promise<void> {
-      await postJSON("/api/project", { name: "Rekey Test Proj", theme: "green" });
+      await postJSON("/api/project", { name: "Rekey Test Proj", theme: "green", path: TEST_PROJECT_DIR });
       for (let i = 0; i < 3; i++) {
         await postJSON(`/api/project/${PROJ}/pr`, makePR({ title: `Rekey PR ${i}` }));
         await postJSON(`/api/project/${PROJ}/review`, {
@@ -638,8 +679,8 @@ describe("server endpoints", () => {
 
   describe("project isolation", () => {
     it("PRs in one project do not appear in another", async () => {
-      await postJSON("/api/project", { name: "Isolation A", theme: "blue" });
-      await postJSON("/api/project", { name: "Isolation B", theme: "red" });
+      await postJSON("/api/project", { name: "Isolation A", theme: "blue", path: TEST_PROJECT_DIR });
+      await postJSON("/api/project", { name: "Isolation B", theme: "red", path: TEST_PROJECT_DIR });
 
       await postJSON("/api/project/isolation-a/pr", makePR({ title: "Project A PR" }));
       await postJSON("/api/project/isolation-b/pr", makePR({ title: "Project B PR" }));

@@ -8,14 +8,12 @@ export interface DiffLine {
 export interface PRFile {
   path: string;
   status: "added" | "modified" | "deleted";
-  additions?: number;
-  deletions?: number;
+  additions: number;
+  deletions: number;
   diff: DiffLine[];
   explanation: string;
-  /** Full new file content — alternative to diff. Server computes diff from this. */
+  /** Full new file content. Server computes diff from this. Required for added/modified. */
   content?: string;
-  /** Original file content — used with content for modified/deleted files. */
-  oldContent?: string;
 }
 
 export interface PRData {
@@ -36,6 +34,8 @@ export interface Project {
   id: string;
   name: string;
   theme: string;
+  /** Filesystem root path for reading existing files to compute diffs. */
+  path?: string;
   prs: PRData[];
   reviews: Record<string, ReviewEntry>;
 }

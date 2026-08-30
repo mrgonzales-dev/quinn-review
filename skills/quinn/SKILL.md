@@ -13,7 +13,7 @@ Quinn supports **multiple projects**. Each project is a separate folder with its
 1. The user gives you a task (e.g., "add input validation to the login form").
 2. You analyze the relevant files in the user's codebase.
 3. Start the review server: `bun run server.ts`.
-4. Call `quinn_list_projects` to see existing projects. If none exist or you need a new one, call `quinn_create_project` with a name and optional theme (blue, green, purple, orange, red, teal).
+4. Call `quinn_list_projects` to see existing projects. If none exist or you need a new one, call `quinn_create_project` with a name, the project's filesystem `path` (so Quinn can read existing files and compute diffs), and optional theme (blue, green, purple, orange, red, teal).
 5. Call `quinn_clear` with the `projectId` to reset any old PRs in the project.
 6. Send each PR one at a time via `quinn_send_pr` (pass `projectId`), or send up to 5 at once via `quinn_send_batch`. The server validates the data and appends each PR.
 7. Tell the user to open `http://localhost:2400` in their browser and click the project folder.
@@ -25,9 +25,9 @@ Quinn supports **multiple projects**. Each project is a separate folder with its
 
 Send one PR object per `quinn_send_pr` call or in the `prs` array of `quinn_send_batch`. The server validates the structure and rejects invalid data with an error message.
 
-### Preferred format — content-based (saves tokens)
+### Format — content-based
 
-Send the full file content as a string. The server computes the diff automatically. This avoids writing per-line JSON diff objects.
+Send the full new file content as a string. Quinn reads the existing file from the project's filesystem path (set during `quinn_create_project`) and computes the diff automatically. You do NOT need to send `oldContent` or `diff` arrays.
 
 ```json
 {
@@ -40,44 +40,15 @@ Send the full file content as a string. The server computes the diff automatical
       "path": "relative/path/to/file.ext",
       "status": "modified",
       "content": "full new file text here",
-      "oldContent": "full old file text here",
       "explanation": "Why this change was made. What it does."
     }
   ]
 }
 ```
 
-For `added` files: send only `content` (the new file text).
-For `modified` files: send both `content` (new) and `oldContent` (original).
-For `deleted` files: send `content` or `oldContent` with the file text being removed.
-
-### Alternative format — diff-based
-
-Send a `diff` array with line-by-line objects. Use this only when you need precise control over which lines appear in the review.
-
-```json
-{
-  "title": "Short summary of the proposed changes",
-  "description": "Longer explanation of what and why. What does this PR do?",
-  "branch": "ai-proposal/short-branch-name",
-  "label": "bugfix",
-  "files": [
-    {
-      "path": "relative/path/to/file.ext",
-      "status": "added | modified | deleted",
-      "diff": [
-        {
-          "type": "context | added | removed",
-          "oldNumber": 10,
-          "newNumber": 10,
-          "content": "the line of code"
-        }
-      ],
-      "explanation": "Why this change was made. What it does."
-    }
-  ]
-}
-```
+For `added` files: send `content` (the new file text). Quinn marks all lines as added.
+For `modified` files: send `content` (new file text). Quinn reads the existing file from disk and computes the diff.
+For `deleted` files: send `content` (can be empty string). Quinn reads the existing file from disk and marks all lines as removed.
 
 You can send one PR or multiple PRs. Each PR appears as a separate entry in the sidebar.
 
@@ -88,19 +59,13 @@ You can send one PR or multiple PRs. Each PR appears as a separate entry in the 
 - **branch**: `ai-proposal/` prefix + short kebab-case name.
 - **label**: Short tag shown as a badge in the sidebar (e.g., "bugfix", "feature", "refactor"). Optional.
 - **files**: Array of file objects. One per file you propose to change.
-- **path**: Relative to the user's project root.
+- **path**: Relative to the project root (the `path` set in `quinn_create_project`).
 - **status**: `added` for new files, `modified` for changed files, `deleted` for removed files.
-- **content**: Full new file content as a string. Server computes the diff. Preferred over `diff`.
-- **oldContent**: Original file content. Used with `content` for `modified` status.
-- **additions / deletions**: Optional. The server auto-computes these from the diff.
-- **diff**: Array of line objects in order. Alternative to `content`.
-  - `type`: `context` (unchanged), `added` (new line), `removed` (deleted line).
-  - `oldNumber`: Line number in the original file. `null` for added lines.
-  - `newNumber`: Line number in the new file. `null` for removed lines.
-  - `content`: The raw line content (no leading +/- sign).
+- **content**: Full new file content as a string. Required. Quinn reads the existing file from disk to compute the diff.
+- **additions / deletions**: Auto-computed by the server from the diff. Do not send these.
 - **explanation**: One or two sentences. Why you made this specific change to this file.
 
-Each file must have either `content` or `diff` (not neither). If both are present, `content` takes precedence.
+Each file must have a `content` string. The server computes the diff from the existing file on disk.
 
 ## Starting the review server
 
@@ -172,10 +137,8 @@ curl -X POST http://localhost:2400/api/project/my-app/pr \
 
 The server validates the PR structure. It checks that:
 - All required fields exist and have correct types.
-- `additions` and `deletions` counts (if provided) match the actual added and removed lines in the diff.
 - `status` is one of `added`, `modified`, or `deleted`.
-- `type` in each diff line is `context`, `added`, or `removed`.
-- `oldNumber` is `null` for added lines. `newNumber` is `null` for removed lines.
+- `content` is a non-empty string for each file.
 - No duplicate file paths within the same PR.
 - `idSuffix` in review POST must match the format `{prIndex}-{fileIndex}`.
 

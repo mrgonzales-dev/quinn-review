@@ -9,7 +9,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { execSync, spawn } from "node:child_process";
 import type { PRData, PRFile, DiffLine, QuinnData, Project, ReviewEntry } from "./src/types.ts";
 import { renderPage } from "./src/render/render-page.ts";
@@ -66,99 +66,68 @@ function findProject(data: QuinnData, id: string): Project | undefined {
 
 // ── Validation ─────────────────────────────────────────────────
 
-export function validateDiffLine(line: unknown): string | null {
-  if (typeof line !== "object" || line === null) return "Diff line must be an object";
-  const l = line as Record<string, unknown>;
-  if (l.type !== "context" && l.type !== "added" && l.type !== "removed") {
-    return "Diff line type must be 'context', 'added', or 'removed'";
+function readOldFile(projectPath: string | undefined, filePath: string): string {
+  if (!projectPath) return "";
+  const absPath = join(projectPath, filePath);
+  if (!existsSync(absPath)) return "";
+  try {
+    return readFileSync(absPath, "utf-8");
+  } catch {
+    return "";
   }
-  if (l.oldNumber !== null && typeof l.oldNumber !== "number") {
-    return "Diff line oldNumber must be a number or null";
-  }
-  if (l.newNumber !== null && typeof l.newNumber !== "number") {
-    return "Diff line newNumber must be a number or null";
-  }
-  if (typeof l.content !== "string") {
-    return "Diff line content must be a string";
-  }
-  if (l.type === "added" && l.oldNumber !== null) {
-    return "Diff line oldNumber must be null for added lines";
-  }
-  if (l.type === "removed" && l.newNumber !== null) {
-    return "Diff line newNumber must be null for removed lines";
-  }
-  return null;
 }
 
-export function validateFile(file: unknown): string | null {
+export function validateFile(file: unknown, projectPath?: string): string | null {
   if (typeof file !== "object" || file === null) return "File must be an object";
   const f = file as Record<string, unknown>;
   if (typeof f.path !== "string" || !f.path) return "File path must be a non-empty string";
   if (f.status !== "added" && f.status !== "modified" && f.status !== "deleted") {
     return "File status must be 'added', 'modified', or 'deleted'";
   }
-  if (f.additions !== undefined && (typeof f.additions !== "number" || f.additions < 0)) {
-    return "File additions must be a non-negative number";
-  }
-  if (f.deletions !== undefined && (typeof f.deletions !== "number" || f.deletions < 0)) {
-    return "File deletions must be a non-negative number";
-  }
   if (typeof f.explanation !== "string" || !f.explanation) {
     return "File explanation must be a non-empty string";
   }
 
-  const hasDiff = Array.isArray(f.diff) && f.diff.length > 0;
   const hasContent = typeof f.content === "string";
-
-  if (!hasDiff && !hasContent) {
-    return "File must have either a non-empty 'diff' array or a 'content' string";
+  if (!hasContent) {
+    return "File must have a 'content' string";
   }
 
-  if (hasContent) {
-    // Content-based format: compute diff server-side
-    const content = f.content as string;
-    const oldContent = typeof f.oldContent === "string" ? f.oldContent as string : "";
+  const content = f.content as string;
 
-    if (f.status === "added") {
-      f.diff = computeAddedDiff(content);
-    } else if (f.status === "deleted") {
-      f.diff = computeDeletedDiff(oldContent || content);
-    } else {
-      // modified — need oldContent to compute diff
-      if (!oldContent) {
-        // If no oldContent provided, treat all lines as added
-        f.diff = computeAddedDiff(content);
-      } else {
-        f.diff = computeDiff(oldContent, content);
-      }
+  if (f.status === "added") {
+    f.diff = computeAddedDiff(content);
+  } else if (f.status === "deleted") {
+    // For deleted files, read old content from disk
+    const oldContent = readOldFile(projectPath, f.path);
+    if (!oldContent) {
+      return `Cannot delete '${f.path}': file does not exist in project directory`;
     }
-
-    if (f.diff.length === 0) {
-      return "Computed diff is empty — content and oldContent are identical";
-    }
+    f.diff = computeDeletedDiff(oldContent);
   } else {
-    // Diff-based format (original): validate each line
-    for (let i = 0; i < f.diff.length; i++) {
-      const err = validateDiffLine(f.diff[i]);
-      if (err) return `Diff line ${i}: ${err}`;
+    // modified — read old content from disk
+    const oldContent = readOldFile(projectPath, f.path);
+    if (!oldContent) {
+      // File doesn't exist on disk — treat as added
+      f.status = "added";
+      f.diff = computeAddedDiff(content);
+    } else {
+      f.diff = computeDiff(oldContent, content);
     }
+  }
+
+  if (f.diff.length === 0) {
+    return "Computed diff is empty — content is identical to existing file";
   }
 
   const addedCount = (f.diff as DiffLine[]).filter(d => d.type === "added").length;
   const removedCount = (f.diff as DiffLine[]).filter(d => d.type === "removed").length;
-  if (f.additions !== undefined && addedCount !== f.additions) {
-    return `File additions (${f.additions}) does not match actual added lines (${addedCount})`;
-  }
-  if (f.deletions !== undefined && removedCount !== f.deletions) {
-    return `File deletions (${f.deletions}) does not match actual removed lines (${removedCount})`;
-  }
-  // Auto-compute additions/deletions from diff array
   f.additions = addedCount;
   f.deletions = removedCount;
   return null;
 }
 
-export function validatePR(pr: unknown): string | null {
+export function validatePR(pr: unknown, projectPath?: string): string | null {
   if (typeof pr !== "object" || pr === null) return "PR must be an object";
   const p = pr as Record<string, unknown>;
   if (typeof p.title !== "string" || !p.title) return "PR title must be a non-empty string";
@@ -171,7 +140,7 @@ export function validatePR(pr: unknown): string | null {
     return "PR files must be a non-empty array";
   }
   for (let i = 0; i < p.files.length; i++) {
-    const err = validateFile(p.files[i]);
+    const err = validateFile(p.files[i], projectPath);
     if (err) return `File ${i} (${(p.files[i] as PRFile)?.path ?? "unknown"}): ${err}`;
   }
   const paths = p.files.map((f: unknown) => (f as PRFile).path);
@@ -288,15 +257,18 @@ export function main() {
           if (!VALID_THEMES.includes(theme)) {
             return json({ error: `Invalid theme. Must be one of: ${VALID_THEMES.join(", ")}` }, 400);
           }
+          const projectPath = typeof body.path === "string" && body.path
+            ? resolve(body.path)
+            : undefined;
           const id = slugify(body.name);
           const data = loadData();
           if (findProject(data, id)) {
             return json({ error: `Project '${id}' already exists` }, 400);
           }
-          const project: Project = { id, name: body.name, theme, prs: [], reviews: {} };
+          const project: Project = { id, name: body.name, theme, path: projectPath, prs: [], reviews: {} };
           data.projects.push(project);
           saveData(data);
-          return json({ ok: true, id, name: body.name, theme });
+          return json({ ok: true, id, name: body.name, theme, path: projectPath });
         } catch {
           return json({ error: "Bad request body" }, 400);
         }
@@ -341,7 +313,7 @@ export function main() {
         if (!project) return json({ error: "Project not found" }, 404);
         try {
           const body = await req.json();
-          const err = validatePR(body);
+          const err = validatePR(body, project.path);
           if (err) return json({ error: err }, 400);
           project.prs.push(body as PRData);
           saveData(data);
@@ -394,7 +366,7 @@ export function main() {
           }
           const errors: string[] = [];
           for (let i = 0; i < body.length; i++) {
-            const err = validatePR(body[i]);
+            const err = validatePR(body[i], project.path);
             if (err) errors.push(`PR ${i}: ${err}`);
           }
           if (errors.length > 0) {
@@ -454,7 +426,7 @@ export function main() {
         if (!project) return json({ error: "Project not found" }, 404);
         try {
           const body = await req.json();
-          const err = validatePR(body);
+          const err = validatePR(body, project.path);
           if (err) return json({ error: err }, 400);
           if (index < 0 || index >= project.prs.length) {
             return json({ error: "PR index out of range" }, 400);
