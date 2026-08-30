@@ -291,6 +291,82 @@ export const STYLES = `
   .update-btn:hover { background: rgba(210,153,34,0.25); }
   .update-btn:disabled { opacity: 0.6; cursor: default; }
 
+  /* ── Landing page ────────────────────────────────────────────── */
+  .landing-overlay {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .landing-modal {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 12px; padding: 48px 40px; max-width: 560px; width: 90%;
+    text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .landing-logo {
+    width: 56px; height: 56px; border-radius: 12px;
+    margin: 0 auto 20px; display: block;
+  }
+  .landing-title {
+    font-size: 24px; font-weight: 600; color: var(--text);
+    margin-bottom: 8px;
+  }
+  .landing-subtitle {
+    font-size: 14px; color: var(--text-muted); margin-bottom: 32px;
+  }
+  .landing-steps {
+    text-align: left; margin-bottom: 32px;
+  }
+  .landing-step {
+    display: flex; gap: 12px; padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .landing-step:last-child { border-bottom: none; }
+  .landing-step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--accent); font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .landing-step-content { flex: 1; }
+  .landing-step-title {
+    font-size: 13px; font-weight: 600; color: var(--text);
+    margin-bottom: 2px;
+  }
+  .landing-step-desc {
+    font-size: 12px; color: var(--text-muted); line-height: 1.5;
+  }
+  .landing-code {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 14px; margin-top: 6px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 12px; color: var(--accent);
+    overflow-x: auto; text-align: left;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .landing-code:hover { background: var(--bg-tertiary); }
+  .landing-code .copy-hint {
+    color: var(--text-muted); font-size: 10px; float: right;
+  }
+  .landing-waiting {
+    margin-top: 24px; padding: 12px; border-radius: 6px;
+    background: rgba(88,166,255,0.06); border: 1px solid rgba(88,166,255,0.2);
+    font-size: 12px; color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .landing-spinner {
+    width: 14px; height: 14px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
   /* Footer */
   .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; text-align: center; }
 `;

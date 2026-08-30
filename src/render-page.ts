@@ -2,6 +2,7 @@ import type { PRData } from "./types.ts";
 import { STYLES } from "./styles.ts";
 import { renderSidebar } from "./render-sidebar.ts";
 import { renderFile } from "./render-file.ts";
+import { renderLanding } from "./render-landing.ts";
 import { escapeHtml } from "./escape.ts";
 
 function renderPRContent(pr: PRData, prIndex: number): string {
@@ -41,8 +42,10 @@ ${fileCards}
 }
 
 export function renderPage(prs: PRData[]): string {
-  const sidebar = renderSidebar(prs);
-  const prContents = prs.map((pr, i) => renderPRContent(pr, i)).join("\n");
+  const hasPRs = prs.length > 0;
+  const sidebar = hasPRs ? renderSidebar(prs) : "";
+  const prContents = hasPRs ? prs.map((pr, i) => renderPRContent(pr, i)).join("\n") : "";
+  const landing = hasPRs ? "" : renderLanding();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -57,6 +60,7 @@ ${sidebar}
   <div class="main">
 ${prContents}
   </div>
+${landing}
   <script>
     function selectPR(index) {
       var prs = document.querySelectorAll(".pr-content");
@@ -302,6 +306,32 @@ ${prContents}
           console.error("Update failed:", e);
         });
     }
+
+    function copyLandingCode(el) {
+      var text = el.textContent.replace("click to copy", "").trim();
+      navigator.clipboard.writeText(text);
+      var hint = el.querySelector(".copy-hint");
+      if (hint) {
+        var orig = hint.textContent;
+        hint.textContent = "copied!";
+        setTimeout(function() { hint.textContent = orig; }, 1500);
+      }
+    }
+
+    (function pollForPRs() {
+      var overlay = document.getElementById("landing-overlay");
+      if (!overlay) return;
+      setInterval(function() {
+        fetch("/api/prs")
+          .then(function(r) { return r.json(); })
+          .then(function(prs) {
+            if (prs && prs.length > 0) {
+              window.location.reload();
+            }
+          })
+          .catch(function() {});
+      }, 3000);
+    })();
   </script>
 </body>
 </html>`;
