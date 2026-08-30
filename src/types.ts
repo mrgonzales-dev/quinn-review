@@ -8,8 +8,8 @@ export interface DiffLine {
 export interface PRFile {
   path: string;
   status: "added" | "modified" | "deleted";
-  additions: number;
-  deletions: number;
+  additions?: number;
+  deletions?: number;
   diff: DiffLine[];
   explanation: string;
 }

@@ -14,9 +14,9 @@ import { execSync, spawn } from "node:child_process";
 import type { PRData, PRFile, DiffLine } from "./src/types.ts";
 import { renderPage } from "./src/render/render-page.ts";
 
-const inputPath = resolve(process.argv[2] ?? "./pr-data.json");
+const inputPath = resolve(process.env.QUINN_DATA ?? process.argv[2] ?? "./pr-data.json");
 const reviewsPath = resolve(dirname(inputPath), "reviews.json");
-const PORT = 2400;
+const PORT = parseInt(process.env.QUINN_PORT ?? "2400", 10);
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
 
 function loadPRData(): PRData[] {
@@ -47,7 +47,7 @@ function saveReviews(reviews: Record<string, string>): void {
   writeFileSync(reviewsPath, JSON.stringify(reviews, null, 2), "utf-8");
 }
 
-function validateDiffLine(line: unknown): string | null {
+export function validateDiffLine(line: unknown): string | null {
   if (typeof line !== "object" || line === null) return "Diff line must be an object";
   const l = line as Record<string, unknown>;
   if (l.type !== "context" && l.type !== "added" && l.type !== "removed") {
@@ -71,17 +71,17 @@ function validateDiffLine(line: unknown): string | null {
   return null;
 }
 
-function validateFile(file: unknown): string | null {
+export function validateFile(file: unknown): string | null {
   if (typeof file !== "object" || file === null) return "File must be an object";
   const f = file as Record<string, unknown>;
   if (typeof f.path !== "string" || !f.path) return "File path must be a non-empty string";
   if (f.status !== "added" && f.status !== "modified" && f.status !== "deleted") {
     return "File status must be 'added', 'modified', or 'deleted'";
   }
-  if (typeof f.additions !== "number" || f.additions < 0) {
+  if (f.additions !== undefined && (typeof f.additions !== "number" || f.additions < 0)) {
     return "File additions must be a non-negative number";
   }
-  if (typeof f.deletions !== "number" || f.deletions < 0) {
+  if (f.deletions !== undefined && (typeof f.deletions !== "number" || f.deletions < 0)) {
     return "File deletions must be a non-negative number";
   }
   if (!Array.isArray(f.diff) || f.diff.length === 0) {
@@ -96,16 +96,19 @@ function validateFile(file: unknown): string | null {
   }
   const addedCount = (f.diff as DiffLine[]).filter(d => d.type === "added").length;
   const removedCount = (f.diff as DiffLine[]).filter(d => d.type === "removed").length;
-  if (addedCount !== f.additions) {
+  if (f.additions !== undefined && addedCount !== f.additions) {
     return `File additions (${f.additions}) does not match actual added lines (${addedCount})`;
   }
-  if (removedCount !== f.deletions) {
+  if (f.deletions !== undefined && removedCount !== f.deletions) {
     return `File deletions (${f.deletions}) does not match actual removed lines (${removedCount})`;
   }
+  // Auto-compute additions/deletions from diff array
+  f.additions = addedCount;
+  f.deletions = removedCount;
   return null;
 }
 
-function validatePR(pr: unknown): string | null {
+export function validatePR(pr: unknown): string | null {
   if (typeof pr !== "object" || pr === null) return "PR must be an object";
   const p = pr as Record<string, unknown>;
   if (typeof p.title !== "string" || !p.title) return "PR title must be a non-empty string";
@@ -137,8 +140,17 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function main() {
-  const server = Bun.serve({
+let serverInstance: ReturnType<typeof Bun.serve> | null = null;
+
+export function stop(): void {
+  if (serverInstance) {
+    serverInstance.stop();
+    serverInstance = null;
+  }
+}
+
+export function main() {
+  serverInstance = Bun.serve({
     port: PORT,
     async fetch(req) {
       const url = new URL(req.url);
@@ -410,7 +422,7 @@ function main() {
   const data = loadPRData();
   console.log("\n  Quinn — review server running\n");
   console.log(`  PRs: ${data.length}`);
-  console.log(`  URL: http://localhost:${server.port}`);
+  console.log(`  URL: http://localhost:${serverInstance.port}`);
   console.log(`  Data: ${inputPath}`);
   console.log(`  Reviews: ${reviewsPath}\n`);
 
@@ -424,4 +436,8 @@ function main() {
   console.log(`  MCP: bun run ${mcpPath}\n`);
 }
 
-main();
+// Only start when run directly, not when imported by tests
+const isMainModule = import.meta.path === process.argv[1] || import.meta.main;
+if (isMainModule) {
+  main();
+}

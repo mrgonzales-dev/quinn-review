@@ -25,6 +25,14 @@ All AI-generated text (chat, reports, code comments, documentation, explanations
 - **Review all connected files first.** Before planning any change, read every file that touches or depends on code you are about to modify. Trace function calls, imports, shared state, and route handlers. Do not plan change until you have read and understood full chain of affected files.
 - **Double-check all connected files after planning.** Once you have plan, re-read connected files to confirm plan does not break existing calculations, return structures, side effects, or assumptions made by callers. If connected file relies on behavior you are about to change, flag it before proceeding.
 
+## Development
+
+- **Use Test Driven Development (TDD).** Write tests before implementation code. Cycle: write test, present to user for review, get approval, write code, run test, fix until passing.
+- **Write tests first for every new feature or behavior change.** Tests define expected behavior. Implementation follows tests, not the reverse.
+- **One test file per module.** Place test files in `test/` directory. Name file after module it tests (e.g., `test/server.test.ts` tests `server.ts`).
+- **Run tests after each change.** Use `bun test`. Do not skip this step.
+- **Do not write implementation code without a failing test.** If no test exists for the behavior, write the test first.
+
 ## Test Policy
 
 - **Golden rule:** When making tests, maintain 1:1 logic with code being tested. Test must verify exact behavior of code, not approximation.

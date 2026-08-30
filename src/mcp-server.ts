@@ -44,6 +44,30 @@ async function apiPut(path: string, body: unknown): Promise<unknown> {
   return res.json();
 }
 
+export function mergePrsWithReviews(
+  prs: Array<{ title: string; description: string; branch: string; label?: string; files: Array<{ path: string }>; completed?: boolean }>,
+  reviews: Record<string, string>,
+): Array<{
+  index: number;
+  label: string | null;
+  title: string;
+  branch: string;
+  completed: boolean;
+  files: Array<{ path: string; verdict: string }>;
+}> {
+  return prs.map((pr, i) => ({
+    index: i,
+    label: pr.label ?? null,
+    title: pr.title,
+    branch: pr.branch,
+    completed: pr.completed ?? false,
+    files: pr.files.map((file, fi) => ({
+      path: file.path,
+      verdict: reviews[`${i}-${fi}`] ?? "pending",
+    })),
+  }));
+}
+
 const server = new Server(
   { name: "quinn", version: "1.0.0" },
   { capabilities: { tools: {}, prompts: {} } },
@@ -58,12 +82,13 @@ Quinn lets you send proposed code changes to a human reviewer. The reviewer sees
 1. Call quinn_start to verify the review server is running.
 2. Call quinn_clear to reset any old PRs from a previous session.
 3. Make your changes in the codebase.
-4. Build PRs from your changes. Call quinn_send_pr for a single PR, or quinn_send_batch for up to 5 PRs at once. Give each PR a short label (e.g. "bugfix", "feature", "refactor") so the user can identify it easily.
+4. Build PRs from your changes. Call quinn_send_pr for a single PR, or quinn_send_batch for up to 5 PRs at once. Give each PR a short label (e.g. "bugfix", "feature", "refactor") so the user can identify it easily. You do not need to count additions or deletions — the server computes them from the diff array.
 5. Tell the user to review the changes at http://localhost:2400.
-6. Call quinn_reviews to check which files the user approved or rejected. Call quinn_list_prs to see all PRs and their indices.
+6. Call quinn_list_prs to see all PRs with their indices, labels, and per-file review verdicts (approved/rejected/pending). Call quinn_get_pr to see full content of a specific PR. Call quinn_reviews to get the raw review map.
 7. If the user requested changes to a PR, call quinn_update_pr with the updated content. This clears old reviews and puts the PR back up for review.
-8. Apply only the approved changes. Skip rejected files.
-9. Call quinn_complete to mark the PR as done.
+8. If a PR was sent by mistake, call quinn_delete_pr to remove it.
+9. Apply only the approved changes. Skip rejected files.
+10. Call quinn_complete to mark the PR as done.
 
 ## How to format diffs
 
@@ -108,8 +133,6 @@ Use quinn_send_batch when you have 2-5 PRs ready. This is faster than calling qu
     {
       "path": "server.js",
       "status": "modified",
-      "additions": 3,
-      "deletions": 1,
       "diff": [
         { "type": "context", "oldNumber": 45, "newNumber": 45, "content": "  const target = requestedPath" },
         { "type": "removed", "oldNumber": 46, "newNumber": null, "content": "    ? path.resolve(requestedPath)" },
@@ -187,8 +210,6 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         '  "files": [{\n' +
         '    "path": "server.js",\n' +
         '    "status": "modified",\n' +
-        '    "additions": 3,\n' +
-        '    "deletions": 1,\n' +
         '    "diff": [\n' +
         '      {"type":"context","oldNumber":45,"newNumber":45,"content":"  const target = requestedPath"},\n' +
         '      {"type":"removed","oldNumber":46,"newNumber":null,"content":"    ? path.resolve(requestedPath)"},\n' +
@@ -213,8 +234,8 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
               properties: {
                 path: { type: "string", description: "File path" },
                 status: { type: "string", enum: ["added", "modified", "deleted"], description: "File change status" },
-                additions: { type: "number", description: "Number of added lines (must match actual added lines in diff)" },
-                deletions: { type: "number", description: "Number of removed lines (must match actual removed lines in diff)" },
+                additions: { type: "number", description: "Number of added lines (optional — server auto-computes from diff)" },
+                deletions: { type: "number", description: "Number of removed lines (optional — server auto-computes from diff)" },
                 diff: {
                   type: "array",
                   description:
@@ -239,7 +260,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     "Bad: 'Fixed bugs'. Good: 'Added realpathSync to path containment check to prevent symlink traversal (BUG_002)'.",
                 },
               },
-              required: ["path", "status", "additions", "deletions", "diff", "explanation"],
+              required: ["path", "status", "diff", "explanation"],
             },
           },
         },
@@ -249,9 +270,11 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
     {
       name: "quinn_list_prs",
       description:
-        "List all PRs on the review server. " +
-        "Returns an array of PRs with their index, label, title, branch, file count, and completed status. " +
-        "Use this to see which PRs exist and their indices before updating or completing them.",
+        "List all PRs on the review server with per-file review verdicts. " +
+        "Returns an array of PRs with their index, label, title, branch, completed status, and files. " +
+        "Each file shows its path and verdict: 'approved', 'rejected', or 'pending'. " +
+        "Use this to see the full review state in one call. " +
+        "Call quinn_get_pr to see full diff content of a specific PR.",
       inputSchema: { type: "object", properties: {}, required: [] },
     },
     {
@@ -277,8 +300,8 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
               properties: {
                 path: { type: "string", description: "File path" },
                 status: { type: "string", enum: ["added", "modified", "deleted"], description: "File change status" },
-                additions: { type: "number", description: "Number of added lines (must match actual added lines in diff)" },
-                deletions: { type: "number", description: "Number of removed lines (must match actual removed lines in diff)" },
+                additions: { type: "number", description: "Number of added lines (optional — server auto-computes from diff)" },
+                deletions: { type: "number", description: "Number of removed lines (optional — server auto-computes from diff)" },
                 diff: {
                   type: "array",
                   description:
@@ -303,7 +326,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     "Bad: 'Fixed bugs'. Good: 'Added realpathSync to path containment check to prevent symlink traversal (BUG_002)'.",
                 },
               },
-              required: ["path", "status", "additions", "deletions", "diff", "explanation"],
+              required: ["path", "status", "diff", "explanation"],
             },
           },
         },
@@ -356,7 +379,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                       },
                       explanation: { type: "string" },
                     },
-                    required: ["path", "status", "additions", "deletions", "diff", "explanation"],
+                    required: ["path", "status", "diff", "explanation"],
                   },
                 },
               },
@@ -396,6 +419,34 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         required: ["prIndex"],
       },
     },
+    {
+      name: "quinn_delete_pr",
+      description:
+        "Delete a single PR by index. " +
+        "Use this when a PR was sent by mistake (duplicate, wrong file, bad idea). " +
+        "This removes the PR and shifts all subsequent PR indices down by one.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prIndex: { type: "number", description: "Index of the PR to delete" },
+        },
+        required: ["prIndex"],
+      },
+    },
+    {
+      name: "quinn_get_pr",
+      description:
+        "Get full content of a single PR by index. " +
+        "Returns title, description, branch, label, and all files with their diffs and explanations. " +
+        "Use this to verify what is stored on the server before updating or completing a PR.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prIndex: { type: "number", description: "Index of the PR to retrieve" },
+        },
+        required: ["prIndex"],
+      },
+    },
   ],
 }));
 
@@ -410,16 +461,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "quinn_list_prs": {
-        const result = await apiGet("/api/prs");
-        const prs = result as Array<{ title: string; branch: string; label?: string; files: unknown[]; completed?: boolean }>;
-        const summary = prs.map((pr, i) => ({
-          index: i,
-          label: pr.label ?? null,
-          title: pr.title,
-          branch: pr.branch,
-          files: pr.files.length,
-          completed: pr.completed ?? false,
-        }));
+        const [prsResult, reviewsResult] = await Promise.all([
+          apiGet("/api/prs"),
+          apiGet("/api/reviews"),
+        ]);
+        const prs = prsResult as Array<{ title: string; description: string; branch: string; label?: string; files: Array<{ path: string }>; completed?: boolean }>;
+        const reviews = reviewsResult as Record<string, string>;
+        const summary = mergePrsWithReviews(prs, reviews);
         return { content: [{ type: "text", text: JSON.stringify(summary, null, 2) }] };
       }
 
@@ -452,6 +500,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "quinn_complete": {
         const result = await apiPost("/api/complete", args);
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "quinn_delete_pr": {
+        const result = await apiDelete(`/api/pr/${args?.prIndex}`);
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "quinn_get_pr": {
+        const result = await apiGet(`/api/pr/${args?.prIndex}`);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
