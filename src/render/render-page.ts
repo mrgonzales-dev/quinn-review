@@ -39,21 +39,29 @@ ${fileCards}
     </div>`;
 }
 
-export function renderPage(data: QuinnData, mcpPath: string): string {
+export function renderPage(data: QuinnData, mcpPath: string, selectedProjectId: string = ""): string {
   const hasProjects = data.projects.length > 0;
   const showLanding = !hasProjects;
 
   // Always render the projects grid so it is visible behind the landing overlay
   const projectsGrid = renderProjects(data.projects);
 
-  // If a project has PRs, show the review view for the first project with PRs
+  // If a project is selected via query param, show it even with zero PRs
+  // Otherwise, show the first project that has PRs
+  const selected = selectedProjectId
+    ? data.projects.find(p => p.id === selectedProjectId)
+    : null;
   const projectWithPRs = data.projects.find(p => p.prs.length > 0);
-  const activeProject = projectWithPRs ?? null;
-  const hasPRs = activeProject ? activeProject.prs.length > 0 : false;
+  const activeProject = selected ?? projectWithPRs ?? null;
+  const hasActiveProject = activeProject !== null;
   const projectId = activeProject?.id ?? "";
 
-  const sidebar = hasPRs ? renderSidebar(activeProject!, data.projects) : "";
-  const prContents = hasPRs ? activeProject!.prs.map((pr, i) => renderPRContent(pr, i, projectId)).join("\n") : "";
+  const sidebar = hasActiveProject ? renderSidebar(activeProject!, data.projects) : "";
+  const prContents = hasActiveProject
+    ? (activeProject!.prs.length > 0
+        ? activeProject!.prs.map((pr, i) => renderPRContent(pr, i, projectId)).join("\n")
+        : `    <div class="pr-empty">No PRs in this project yet. Send a PR from your AI agent to get started.</div>`)
+    : "";
   const landing = showLanding ? renderLanding(mcpPath) : "";
 
   return `<!DOCTYPE html>
@@ -72,8 +80,8 @@ export function renderPage(data: QuinnData, mcpPath: string): string {
 </head>
 <body>
 ${sidebar}
-  <div class="main${hasPRs ? "" : " no-sidebar"}">
-${hasPRs ? prContents : projectsGrid}
+  <div class="main${hasActiveProject ? "" : " no-sidebar"}">
+${hasActiveProject ? prContents : projectsGrid}
   </div>
 ${landing}
   <script>
@@ -398,6 +406,59 @@ ${landing}
           .catch(function() {});
       }, 3000);
     })();
+
+    var pendingDeleteId = null;
+    var pendingDeleteBtn = null;
+
+    function deleteProject(projectId, btn) {
+      var folder = btn.closest(".project-folder");
+      var nameEl = folder.querySelector(".project-folder-name");
+      var name = nameEl ? nameEl.textContent : "this project";
+      var modal = document.getElementById("delete-modal");
+      var nameSpan = document.getElementById("delete-modal-name");
+      if (nameSpan) nameSpan.textContent = name;
+      if (modal) modal.style.display = "";
+      pendingDeleteId = projectId;
+      pendingDeleteBtn = btn;
+    }
+
+    function cancelDeleteProject() {
+      var modal = document.getElementById("delete-modal");
+      if (modal) modal.style.display = "none";
+      pendingDeleteId = null;
+      pendingDeleteBtn = null;
+    }
+
+    function confirmDeleteProject() {
+      if (!pendingDeleteId) return;
+      var confirmBtn = document.getElementById("delete-modal-confirm");
+      if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = "Deleting..."; }
+      fetch("/api/project/" + pendingDeleteId, { method: "DELETE" })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (res.ok) {
+            if (pendingDeleteBtn) {
+              var folder = pendingDeleteBtn.closest(".project-folder");
+              if (folder) folder.remove();
+            }
+            cancelDeleteProject();
+            var badge = document.querySelector(".hero-badge");
+            var remaining = document.querySelectorAll(".project-folder").length;
+            if (badge) badge.textContent = remaining + " project" + (remaining === 1 ? "" : "s");
+            if (remaining === 0) {
+              var grid = document.querySelector(".project-browser-grid");
+              if (grid) grid.innerHTML = '<div class="projects-empty">No projects yet. Send a PR from your AI agent to get started.</div>';
+            }
+          } else {
+            console.error("Delete failed:", res.error);
+          }
+          if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "Delete"; }
+        })
+        .catch(function(e) {
+          console.error("Delete failed:", e);
+          if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "Delete"; }
+        });
+    }
   </script>
 </body>
 </html>`;

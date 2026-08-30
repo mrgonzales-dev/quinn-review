@@ -24,6 +24,9 @@ export function renderProjects(projects: Project[]): string {
         const color = THEME_COLORS[p.theme] ?? THEME_COLORS.blue;
         const prLabel = p.prs.length === 1 ? "PR" : "PRs";
         return `        <div class="project-folder theme-${p.theme}" onclick="window.location.href='/?project=${encodeURIComponent(p.id)}'">
+          <button class="project-folder-delete" onclick="event.stopPropagation(); deleteProject('${encodeURIComponent(p.id)}', this)" title="Delete project" aria-label="Delete project">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+          </button>
           <div class="project-folder-icon">${folderIcon(color)}</div>
           <div class="project-folder-name">${escapeHtml(p.name)}</div>
           <div class="project-folder-meta">${p.prs.length} ${prLabel}</div>
@@ -50,5 +53,19 @@ ${folders}
         </div>
       </div>
       <div class="div3">Reserved</div>
+    </div>
+    <div class="delete-modal-overlay" id="delete-modal" style="display:none;">
+      <div class="delete-modal">
+        <div class="delete-modal-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </div>
+        <h2 class="delete-modal-title">Delete project?</h2>
+        <p class="delete-modal-text" id="delete-modal-name"></p>
+        <p class="delete-modal-warning">All PRs and reviews in this project will be removed.</p>
+        <div class="delete-modal-actions">
+          <button class="btn btn-secondary" onclick="cancelDeleteProject()">Cancel</button>
+          <button class="btn btn-danger" id="delete-modal-confirm" onclick="confirmDeleteProject()">Delete</button>
+        </div>
+      </div>
     </div>`;
 }

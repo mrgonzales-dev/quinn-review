@@ -491,6 +491,10 @@ export const STYLES = `
     grid-column: 1 / -1; padding: 60px 20px; text-align: center;
     color: var(--text-muted); font-size: 15px;
   }
+  .pr-empty {
+    padding: 60px 20px; text-align: center;
+    color: var(--text-muted); font-size: 15px;
+  }
   .project-folder {
     background: var(--bg-tertiary); border: 1px solid var(--border);
     border-radius: 12px; padding: 28px 20px; text-align: center;
@@ -518,6 +522,56 @@ export const STYLES = `
     font-size: 12px; color: var(--text-muted);
     font-family: "Fira Code", ui-monospace, SFMono-Regular, monospace;
   }
+  .project-folder-delete {
+    position: absolute; top: 10px; right: 10px;
+    width: 28px; height: 28px; border: none; border-radius: 6px;
+    background: transparent; color: var(--text-muted);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.2s, background 0.2s, color 0.2s;
+  }
+  .project-folder-delete svg { width: 16px; height: 16px; }
+  .project-folder:hover .project-folder-delete { opacity: 1; }
+  .project-folder-delete:hover {
+    background: rgba(255,129,130,0.15); color: #ff8182;
+  }
+
+  /* Delete confirmation modal */
+  .delete-modal-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .delete-modal {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px; max-width: 400px; width: 90%;
+    text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  }
+  .delete-modal-icon {
+    width: 48px; height: 48px; margin: 0 auto 16px;
+    color: #ff8182; display: flex; align-items: center; justify-content: center;
+  }
+  .delete-modal-icon svg { width: 48px; height: 48px; }
+  .delete-modal-title {
+    font-size: 20px; font-weight: 600; color: var(--text);
+    margin: 0 0 8px;
+  }
+  .delete-modal-text {
+    font-size: 15px; color: var(--text); margin: 0 0 4px;
+    font-weight: 500; word-break: break-word;
+  }
+  .delete-modal-warning {
+    font-size: 13px; color: var(--text-muted); margin: 0 0 24px;
+  }
+  .delete-modal-actions {
+    display: flex; gap: 12px; justify-content: center;
+  }
+  .btn-danger {
+    background: #ff8182; color: #0f172a; border: none;
+    font-weight: 600; cursor: pointer; padding: 10px 20px;
+    border-radius: 8px; font-size: 14px;
+    transition: background 0.2s;
+  }
+  .btn-danger:hover { background: #ff6a6b; }
 
   /* div3 placeholder */
   .div3 {

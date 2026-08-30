@@ -197,7 +197,8 @@ export function main() {
       if (path === "/" || path === "/index.html") {
         const data = loadData();
         const mcpPath = resolve(import.meta.dir, "src/mcp-server.ts");
-        const html = renderPage(data, mcpPath);
+        const selectedProject = url.searchParams.get("project") ?? "";
+        const html = renderPage(data, mcpPath, selectedProject);
 
         return new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
