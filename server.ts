@@ -10,6 +10,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { execSync } from "node:child_process";
 import type { PRData, PRFile, DiffLine } from "./src/types.ts";
 import { renderPage } from "./src/render-page.ts";
 
@@ -281,6 +282,37 @@ function main() {
         data[prIndex].completed = false;
         savePRData(data);
         return json({ ok: true, prIndex });
+      }
+
+      // Check for updates — compare local HEAD with GitHub remote main
+      if (path === "/api/update-check" && req.method === "GET") {
+        try {
+          const currentSha = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+          const ghRes = await fetch("https://api.github.com/repos/mrgonzales-dev/quinn-review/commits/main", {
+            headers: { "User-Agent": "quinn-review" },
+          });
+          if (!ghRes.ok) {
+            return json({ error: `GitHub API returned ${ghRes.status}` }, 502);
+          }
+          const ghData = await ghRes.json() as { sha: string };
+          const latestSha = ghData.sha;
+          const updateAvailable = currentSha !== latestSha;
+          return json({ updateAvailable, currentSha, latestSha });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return json({ error: `Update check failed: ${message}` }, 500);
+        }
+      }
+
+      // Apply update — git pull origin main
+      if (path === "/api/update" && req.method === "POST") {
+        try {
+          const output = execSync("git pull origin main", { encoding: "utf-8", stderr: "pipe" });
+          return json({ ok: true, output: output.trim() });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return json({ error: `Update failed: ${message}` }, 500);
+        }
       }
 
       // Serve the Quinn logo

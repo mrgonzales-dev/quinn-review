@@ -263,6 +263,45 @@ ${prContents}
         })
         .catch(function(e) { console.error("Failed to load reviews:", e); });
     })();
+
+    (function checkForUpdates() {
+      fetch("/api/update-check")
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (res.updateAvailable) {
+            var badge = document.getElementById("update-badge");
+            if (badge) badge.style.display = "";
+          }
+        })
+        .catch(function(e) { console.error("Update check failed:", e); });
+    })();
+
+    function applyUpdate() {
+      var btn = document.getElementById("update-btn");
+      var badge = document.getElementById("update-badge");
+      if (btn) btn.disabled = true;
+      if (btn) btn.textContent = "Updating...";
+      fetch("/api/update", { method: "POST" })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (res.ok) {
+            if (btn) btn.textContent = "Done";
+            if (badge) {
+              var text = badge.querySelector(".update-badge-text");
+              if (text) text.textContent = "Updated — restart server";
+            }
+          } else {
+            if (btn) btn.textContent = "Retry";
+            if (btn) btn.disabled = false;
+            console.error("Update failed:", res.error);
+          }
+        })
+        .catch(function(e) {
+          if (btn) btn.textContent = "Retry";
+          if (btn) btn.disabled = false;
+          console.error("Update failed:", e);
+        });
+    }
   </script>
 </body>
 </html>`;

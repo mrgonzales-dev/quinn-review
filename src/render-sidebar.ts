@@ -29,6 +29,11 @@ export function renderSidebar(prs: PRData[]): string {
           <h1>Quinn</h1>
         </div>
         <p>${prs.length} pull request${prs.length === 1 ? "" : "s"} for review</p>
+        <div class="update-badge" id="update-badge" style="display:none;">
+          <span class="update-badge-dot"></span>
+          <span class="update-badge-text">Update available</span>
+          <button class="update-btn" id="update-btn" onclick="applyUpdate()">Update now</button>
+        </div>
       </div>
       <ul class="pr-list">
 ${items}

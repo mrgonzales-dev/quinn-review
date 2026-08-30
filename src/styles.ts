@@ -268,6 +268,29 @@ export const STYLES = `
   .file-review-badge.approved { background: rgba(59,185,80,0.1); color: #7ee787; }
   .file-review-badge.rejected { background: rgba(248,81,73,0.1); color: #ff8182; }
 
+  /* Update badge */
+  .update-badge {
+    display: flex; align-items: center; gap: 8px; margin-top: 12px;
+    padding: 8px 12px; border-radius: 6px; font-size: 12px;
+    background: rgba(210,153,34,0.08); border: 1px solid rgba(210,153,34,0.3);
+  }
+  .update-badge-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--yellow);
+    flex-shrink: 0; animation: pulseDot 1.5s ease-in-out infinite;
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .update-badge-text { color: var(--yellow); }
+  .update-btn {
+    margin-left: auto; padding: 3px 10px; border-radius: 6px; font-size: 11px;
+    background: rgba(210,153,34,0.15); border: 1px solid rgba(210,153,34,0.4);
+    color: var(--yellow); cursor: pointer; transition: background 0.15s;
+  }
+  .update-btn:hover { background: rgba(210,153,34,0.25); }
+  .update-btn:disabled { opacity: 0.6; cursor: default; }
+
   /* Footer */
   .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px; text-align: center; }
 `;
