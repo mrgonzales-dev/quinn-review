@@ -4,8 +4,8 @@
  * Serves the PR review page and provides API endpoints for PR management
  * and review decisions.
  *
- * Usage: bun run server.ts [path-to-pr-data.json]
- * Default: ./pr-data.json
+ * Usage: bun run server.ts [path-to-quinn-data.json]
+ * Default: ./quinn-data.json
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -14,51 +14,58 @@ import { execSync, spawn } from "node:child_process";
 import type { PRData, PRFile, DiffLine } from "./src/types.ts";
 import { renderPage } from "./src/render/render-page.ts";
 
-const inputPath = resolve(process.env.QUINN_DATA ?? process.argv[2] ?? "./pr-data.json");
-const reviewsPath = resolve(dirname(inputPath), "reviews.json");
-const commentsPath = resolve(dirname(inputPath), "comments.json");
+const dataPath = resolve(process.env.QUINN_DATA ?? process.argv[2] ?? "./quinn-data.json");
 const PORT = parseInt(process.env.QUINN_PORT ?? "2400", 10);
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
 
-function loadPRData(): PRData[] {
-  if (!existsSync(inputPath)) return [];
+interface ReviewEntry {
+  verdict: string;
+  comment: string | null;
+}
+
+interface QuinnData {
+  prs: PRData[];
+  reviews: Record<string, ReviewEntry>;
+}
+
+function loadData(): QuinnData {
+  if (!existsSync(dataPath)) return { prs: [], reviews: {} };
   try {
-    const raw = readFileSync(inputPath, "utf-8");
+    const raw = readFileSync(dataPath, "utf-8");
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [parsed];
+    // Migrate old format: bare array of PRs
+    if (Array.isArray(parsed)) return { prs: parsed, reviews: {} };
+    return {
+      prs: Array.isArray(parsed.prs) ? parsed.prs : [],
+      reviews: typeof parsed.reviews === "object" && parsed.reviews !== null ? parsed.reviews : {},
+    };
   } catch {
-    return [];
+    return { prs: [], reviews: {} };
   }
 }
 
-function savePRData(data: PRData[]): void {
-  writeFileSync(inputPath, JSON.stringify(data, null, 2), "utf-8");
+function saveData(data: QuinnData): void {
+  writeFileSync(dataPath, JSON.stringify(data, null, 2), "utf-8");
 }
 
-function loadReviews(): Record<string, string> {
-  if (!existsSync(reviewsPath)) return {};
-  try {
-    return JSON.parse(readFileSync(reviewsPath, "utf-8"));
-  } catch {
-    return {};
-  }
+function loadPRData(): PRData[] {
+  return loadData().prs;
 }
 
-function saveReviews(reviews: Record<string, string>): void {
-  writeFileSync(reviewsPath, JSON.stringify(reviews, null, 2), "utf-8");
+function savePRData(prs: PRData[]): void {
+  const data = loadData();
+  data.prs = prs;
+  saveData(data);
 }
 
-function loadComments(): Record<string, string | null> {
-  if (!existsSync(commentsPath)) return {};
-  try {
-    return JSON.parse(readFileSync(commentsPath, "utf-8"));
-  } catch {
-    return {};
-  }
+function loadReviews(): Record<string, ReviewEntry> {
+  return loadData().reviews;
 }
 
-function saveComments(comments: Record<string, string | null>): void {
-  writeFileSync(commentsPath, JSON.stringify(comments, null, 2), "utf-8");
+function saveReviews(reviews: Record<string, ReviewEntry>): void {
+  const data = loadData();
+  data.reviews = reviews;
+  saveData(data);
 }
 
 export function validateDiffLine(line: unknown): string | null {
@@ -183,11 +190,9 @@ export function main() {
 
       // Health check
       if (path === "/api/health" && req.method === "GET") {
-        const data = loadPRData();
-        const reviews = loadReviews();
-        const completed = data.filter(d => d.completed).length;
-        const comments = loadComments();
-        return json({ ok: true, prs: data.length, reviews: Object.keys(reviews).length, comments: Object.keys(comments).length, completed });
+        const data = loadData();
+        const completed = data.prs.filter(d => d.completed).length;
+        return json({ ok: true, prs: data.prs.length, reviews: Object.keys(data.reviews).length, completed });
       }
 
       // GET all PRs
@@ -205,20 +210,18 @@ export function main() {
           const body = await req.json();
           const err = validatePR(body);
           if (err) return json({ error: err }, 400);
-          const data = loadPRData();
-          data.push(body as PRData);
-          savePRData(data);
-          return json({ ok: true, index: data.length - 1, total: data.length });
+          const data = loadData();
+          data.prs.push(body as PRData);
+          saveData(data);
+          return json({ ok: true, index: data.prs.length - 1, total: data.prs.length });
         } catch {
           return json({ error: "Bad request body" }, 400);
         }
       }
 
-      // DELETE all PRs (also clears reviews and comments)
+      // DELETE all PRs (also clears reviews)
       if (path === "/api/prs" && req.method === "DELETE") {
-        savePRData([]);
-        saveReviews({});
-        saveComments({});
+        saveData({ prs: [], reviews: {} });
         return json({ ok: true });
       }
 
@@ -244,13 +247,13 @@ export function main() {
           if (errors.length > 0) {
             return json({ error: "Validation failed", details: errors }, 400);
           }
-          const data = loadPRData();
-          const startIndex = data.length;
+          const data = loadData();
+          const startIndex = data.prs.length;
           for (const pr of body) {
-            data.push(pr as PRData);
+            data.prs.push(pr as PRData);
           }
-          savePRData(data);
-          return json({ ok: true, startIndex, count: body.length, total: data.length });
+          saveData(data);
+          return json({ ok: true, startIndex, count: body.length, total: data.prs.length });
         } catch {
           return json({ error: "Bad request body" }, 400);
         }
@@ -267,48 +270,31 @@ export function main() {
         return json(data[index]);
       }
 
-      // DELETE a single PR by index (also removes and rekeys reviews/comments)
+      // DELETE a single PR by index (also removes and rekeys reviews)
       if (prGetMatch && req.method === "DELETE") {
         const index = parseInt(prGetMatch[1], 10);
-        const data = loadPRData();
-        if (index < 0 || index >= data.length) {
+        const data = loadData();
+        if (index < 0 || index >= data.prs.length) {
           return json({ error: "PR index out of range" }, 400);
         }
-        data.splice(index, 1);
-        savePRData(data);
+        data.prs.splice(index, 1);
         // Remove reviews for deleted PR, rekey higher indices down by one
-        const reviews = loadReviews();
-        const rekeyedReviews: Record<string, string> = {};
-        for (const [key, val] of Object.entries(reviews)) {
+        const rekeyed: Record<string, ReviewEntry> = {};
+        for (const [key, val] of Object.entries(data.reviews)) {
           const m = key.match(/^(\d+)-(\d+)$/);
           if (!m) continue;
           const prIdx = parseInt(m[1], 10);
           const fileIdx = parseInt(m[2], 10);
           if (prIdx === index) continue; // deleted PR
           if (prIdx > index) {
-            rekeyedReviews[`${prIdx - 1}-${fileIdx}`] = val;
+            rekeyed[`${prIdx - 1}-${fileIdx}`] = val;
           } else {
-            rekeyedReviews[key] = val;
+            rekeyed[key] = val;
           }
         }
-        saveReviews(rekeyedReviews);
-        // Same for comments
-        const comments = loadComments();
-        const rekeyedComments: Record<string, string | null> = {};
-        for (const [key, val] of Object.entries(comments)) {
-          const m = key.match(/^(\d+)-(\d+)$/);
-          if (!m) continue;
-          const prIdx = parseInt(m[1], 10);
-          const fileIdx = parseInt(m[2], 10);
-          if (prIdx === index) continue; // deleted PR
-          if (prIdx > index) {
-            rekeyedComments[`${prIdx - 1}-${fileIdx}`] = val;
-          } else {
-            rekeyedComments[key] = val;
-          }
-        }
-        saveComments(rekeyedComments);
-        return json({ ok: true, total: data.length });
+        data.reviews = rekeyed;
+        saveData(data);
+        return json({ ok: true, total: data.prs.length });
       }
 
       // PUT (update) a single PR by index — replaces PR, clears reviews, resets completed
@@ -322,33 +308,23 @@ export function main() {
           const body = await req.json();
           const err = validatePR(body);
           if (err) return json({ error: err }, 400);
-          const data = loadPRData();
-          if (index < 0 || index >= data.length) {
+          const data = loadData();
+          if (index < 0 || index >= data.prs.length) {
             return json({ error: "PR index out of range" }, 400);
           }
           const updated = body as PRData;
           updated.completed = false;
-          data[index] = updated;
-          savePRData(data);
+          data.prs[index] = updated;
           // Remove all reviews for this PR
-          const reviews = loadReviews();
           const prefix = `${index}-`;
           let removed = 0;
-          for (const key of Object.keys(reviews)) {
+          for (const key of Object.keys(data.reviews)) {
             if (key.startsWith(prefix)) {
-              delete reviews[key];
+              delete data.reviews[key];
               removed++;
             }
           }
-          saveReviews(reviews);
-          // Remove all comments for this PR
-          const comments = loadComments();
-          for (const key of Object.keys(comments)) {
-            if (key.startsWith(prefix)) {
-              delete comments[key];
-            }
-          }
-          saveComments(comments);
+          saveData(data);
           return json({ ok: true, index, reviewsCleared: removed });
         } catch {
           return json({ error: "Bad request body" }, 400);
@@ -380,12 +356,9 @@ export function main() {
             }
           }
           const normalizedComment = comment && comment.length > 0 ? comment : null;
-          const reviews = loadReviews();
-          reviews[idSuffix] = action;
-          saveReviews(reviews);
-          const comments = loadComments();
-          comments[idSuffix] = normalizedComment;
-          saveComments(comments);
+          const data = loadData();
+          data.reviews[idSuffix] = { verdict: action, comment: normalizedComment };
+          saveData(data);
           return json({ ok: true });
         } catch {
           return json({ error: "Bad request body" }, 400);
@@ -396,21 +369,13 @@ export function main() {
       const reviewDelMatch = path.match(/^\/api\/review\/(\d+-\d+)$/);
       if (reviewDelMatch && req.method === "DELETE") {
         const idSuffix = reviewDelMatch[1];
-        const reviews = loadReviews();
-        if (!(idSuffix in reviews)) {
+        const data = loadData();
+        if (!(idSuffix in data.reviews)) {
           return json({ error: "Review not found" }, 404);
         }
-        delete reviews[idSuffix];
-        saveReviews(reviews);
-        const comments = loadComments();
-        delete comments[idSuffix];
-        saveComments(comments);
+        delete data.reviews[idSuffix];
+        saveData(data);
         return json({ ok: true });
-      }
-
-      // GET all comments
-      if (path === "/api/comments" && req.method === "GET") {
-        return json(loadComments());
       }
 
       // POST complete a PR (mark as done)
@@ -421,12 +386,12 @@ export function main() {
           if (typeof prIndex !== "number" || prIndex < 0) {
             return json({ error: "Invalid request. Need prIndex (non-negative number)" }, 400);
           }
-          const data = loadPRData();
-          if (prIndex >= data.length) {
+          const data = loadData();
+          if (prIndex >= data.prs.length) {
             return json({ error: "PR index out of range" }, 400);
           }
-          data[prIndex].completed = true;
-          savePRData(data);
+          data.prs[prIndex].completed = true;
+          saveData(data);
           return json({ ok: true, prIndex });
         } catch {
           return json({ error: "Bad request body" }, 400);
@@ -437,12 +402,12 @@ export function main() {
       const completeDelMatch = path.match(/^\/api\/complete\/(\d+)$/);
       if (completeDelMatch && req.method === "DELETE") {
         const prIndex = parseInt(completeDelMatch[1], 10);
-        const data = loadPRData();
-        if (prIndex < 0 || prIndex >= data.length) {
+        const data = loadData();
+        if (prIndex < 0 || prIndex >= data.prs.length) {
           return json({ error: "PR index out of range" }, 400);
         }
-        data[prIndex].completed = false;
-        savePRData(data);
+        data.prs[prIndex].completed = false;
+        saveData(data);
         return json({ ok: true, prIndex });
       }
 
@@ -496,13 +461,11 @@ export function main() {
     },
   });
 
-  const data = loadPRData();
+  const data = loadData();
   console.log("\n  Quinn — review server running\n");
-  console.log(`  PRs: ${data.length}`);
+  console.log(`  PRs: ${data.prs.length}`);
   console.log(`  URL: http://localhost:${serverInstance.port}`);
-  console.log(`  Data: ${inputPath}`);
-  console.log(`  Reviews: ${reviewsPath}`);
-  console.log(`  Comments: ${commentsPath}\n`);
+  console.log(`  Data: ${dataPath}\n`);
 
   const mcpPath = resolve(import.meta.dir, "src/mcp-server.ts");
   const mcp = spawn("bun", ["run", mcpPath], {

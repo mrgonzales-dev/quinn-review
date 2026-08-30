@@ -3,15 +3,11 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
 const TEST_PORT = 2499;
-const TEST_DATA = resolve(import.meta.dir, "test-pr-data.json");
-const TEST_REVIEWS = resolve(dirname(TEST_DATA), "reviews.json");
-const TEST_COMMENTS = resolve(dirname(TEST_DATA), "comments.json");
+const TEST_DATA = resolve(import.meta.dir, "quinn-data.json");
 
-// Clean up test files before and after
+// Clean up test file before and after
 function cleanup(): void {
   if (existsSync(TEST_DATA)) unlinkSync(TEST_DATA);
-  if (existsSync(TEST_REVIEWS)) unlinkSync(TEST_REVIEWS);
-  if (existsSync(TEST_COMMENTS)) unlinkSync(TEST_COMMENTS);
 }
 
 const BASE = `http://localhost:${TEST_PORT}`;
@@ -246,7 +242,7 @@ describe("server endpoints", () => {
       expect(pr.title).toBe("Updated Title");
 
       // Verify review was cleared
-      const reviews = await getJSON("/api/reviews") as Record<string, string>;
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
       expect(reviews[`${idx}-0`]).toBeUndefined();
     });
   });
@@ -275,8 +271,9 @@ describe("server endpoints", () => {
       }) as { ok: boolean };
       expect(result.ok).toBe(true);
 
-      const comments = await getJSON("/api/comments") as Record<string, string | null>;
-      expect(comments[`${idx}-0`]).toBe("fix off-by-one error");
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
+      expect(reviews[`${idx}-0`].verdict).toBe("rejected");
+      expect(reviews[`${idx}-0`].comment).toBe("fix off-by-one error");
     });
 
     it("stores null for empty string comment", async () => {
@@ -289,8 +286,8 @@ describe("server endpoints", () => {
         comment: "",
       });
 
-      const comments = await getJSON("/api/comments") as Record<string, string | null>;
-      expect(comments[`${idx}-0`]).toBeNull();
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
+      expect(reviews[`${idx}-0`].comment).toBeNull();
     });
 
     it("stores null when comment is omitted", async () => {
@@ -302,8 +299,8 @@ describe("server endpoints", () => {
         action: "approved",
       });
 
-      const comments = await getJSON("/api/comments") as Record<string, string | null>;
-      expect(comments[`${idx}-0`]).toBeNull();
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
+      expect(reviews[`${idx}-0`].comment).toBeNull();
     });
 
     it("rejects comment over 500 chars", async () => {
@@ -347,13 +344,14 @@ describe("server endpoints", () => {
         comment: "second comment",
       });
 
-      const comments = await getJSON("/api/comments") as Record<string, string | null>;
-      expect(comments[`${idx}-0`]).toBe("second comment");
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
+      expect(reviews[`${idx}-0`].verdict).toBe("rejected");
+      expect(reviews[`${idx}-0`].comment).toBe("second comment");
     });
   });
 
-  describe("DELETE /api/review/:idSuffix — clears comment", () => {
-    it("removes comment when review is deleted", async () => {
+  describe("DELETE /api/review/:idSuffix — clears review and comment", () => {
+    it("removes review and comment when review is deleted", async () => {
       const addResult = await postJSON("/api/pr", makePR({ title: "Delete Review PR" })) as { index: number };
       const idx = addResult.index;
 
@@ -365,13 +363,13 @@ describe("server endpoints", () => {
 
       await deleteJSON(`/api/review/${idx}-0`);
 
-      const comments = await getJSON("/api/comments") as Record<string, string | null>;
-      expect(comments[`${idx}-0`]).toBeUndefined();
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
+      expect(reviews[`${idx}-0`]).toBeUndefined();
     });
   });
 
-  describe("PUT /api/pr/:index — clears comments", () => {
-    it("clears comments when PR is updated", async () => {
+  describe("PUT /api/pr/:index — clears reviews with comments", () => {
+    it("clears reviews and comments when PR is updated", async () => {
       const addResult = await postJSON("/api/pr", makePR({ title: "Update Clears Comments" })) as { index: number };
       const idx = addResult.index;
 
@@ -383,20 +381,12 @@ describe("server endpoints", () => {
 
       await putJSON(`/api/pr/${idx}`, makePR({ title: "Updated" }));
 
-      const comments = await getJSON("/api/comments") as Record<string, string | null>;
-      expect(comments[`${idx}-0`]).toBeUndefined();
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
+      expect(reviews[`${idx}-0`]).toBeUndefined();
     });
   });
 
-  describe("GET /api/comments", () => {
-    it("returns a valid comments object", async () => {
-      const result = await getJSON("/api/comments") as Record<string, unknown>;
-      expect(typeof result).toBe("object");
-      expect(result).not.toBeNull();
-    });
-  });
-
-  describe("DELETE /api/prs — clears reviews and comments (stale verdict fix)", () => {
+  describe("DELETE /api/prs — clears reviews (stale verdict fix)", () => {
     it("clears reviews map when all PRs are deleted", async () => {
       // Add a PR and review it
       const addResult = await postJSON("/api/pr", makePR({ title: "Clear Reviews PR" })) as { index: number };
@@ -409,18 +399,18 @@ describe("server endpoints", () => {
       });
 
       // Verify review exists
-      const reviewsBefore = await getJSON("/api/reviews") as Record<string, string>;
-      expect(reviewsBefore[`${idx}-0`]).toBe("approved");
+      const reviewsBefore = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
+      expect(reviewsBefore[`${idx}-0`].verdict).toBe("approved");
 
       // Delete all PRs
       await deleteJSON("/api/prs");
 
       // Reviews map must be empty
-      const reviewsAfter = await getJSON("/api/reviews") as Record<string, string>;
+      const reviewsAfter = await getJSON("/api/reviews") as Record<string, unknown>;
       expect(Object.keys(reviewsAfter).length).toBe(0);
     });
 
-    it("clears comments map when all PRs are deleted", async () => {
+    it("clears comments within reviews when all PRs are deleted", async () => {
       // Add a PR and review it with a comment
       const addResult = await postJSON("/api/pr", makePR({ title: "Clear Comments PR" })) as { index: number };
       const idx = addResult.index;
@@ -432,15 +422,15 @@ describe("server endpoints", () => {
       });
 
       // Verify comment exists
-      const commentsBefore = await getJSON("/api/comments") as Record<string, string | null>;
-      expect(commentsBefore[`${idx}-0`]).toBe("will be cleared");
+      const reviewsBefore = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
+      expect(reviewsBefore[`${idx}-0`].comment).toBe("will be cleared");
 
       // Delete all PRs
       await deleteJSON("/api/prs");
 
-      // Comments map must be empty
-      const commentsAfter = await getJSON("/api/comments") as Record<string, string | null>;
-      expect(Object.keys(commentsAfter).length).toBe(0);
+      // Reviews map must be empty (comments stored inside reviews)
+      const reviewsAfter = await getJSON("/api/reviews") as Record<string, unknown>;
+      expect(Object.keys(reviewsAfter).length).toBe(0);
     });
 
     it("new PRs after clear do not inherit stale verdicts", async () => {
@@ -461,12 +451,12 @@ describe("server endpoints", () => {
         await postJSON("/api/pr", makePR({ title: `Fresh PR ${i}` }));
       }
 
-      const reviews = await getJSON("/api/reviews") as Record<string, string>;
+      const reviews = await getJSON("/api/reviews") as Record<string, unknown>;
       expect(Object.keys(reviews).length).toBe(0);
     });
   });
 
-  describe("DELETE /api/pr/:index — rekeys reviews and comments", () => {
+  describe("DELETE /api/pr/:index — rekeys reviews", () => {
     it("removes reviews for deleted PR", async () => {
       // Start with clean state
       await deleteJSON("/api/prs");
@@ -488,10 +478,10 @@ describe("server endpoints", () => {
       await deleteJSON(`/api/pr/${deleteIdx}`);
 
       // Only 2 reviews should remain (PR 0 and shifted PR 2→1)
-      const reviews = await getJSON("/api/reviews") as Record<string, string>;
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
       expect(Object.keys(reviews).length).toBe(2);
       // PR 0 review unchanged
-      expect(reviews["0-0"]).toBe("approved");
+      expect(reviews["0-0"].verdict).toBe("approved");
       // Old key "2-0" must be gone (rekeyed to "1-0")
       expect(reviews["2-0"]).toBeUndefined();
     });
@@ -514,16 +504,16 @@ describe("server endpoints", () => {
       // Delete PR at index 0 — indices 1 and 2 should shift to 0 and 1
       await deleteJSON(`/api/pr/${indices[0]}`);
 
-      const reviews = await getJSON("/api/reviews") as Record<string, string>;
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
       // Original index 1 (now 0) should still have its review
-      expect(reviews["0-0"]).toBe("approved");
+      expect(reviews["0-0"].verdict).toBe("approved");
       // Original index 2 (now 1) should still have its review
-      expect(reviews["1-0"]).toBe("approved");
+      expect(reviews["1-0"].verdict).toBe("approved");
       // Old key "2-0" must not exist
       expect(reviews["2-0"]).toBeUndefined();
     });
 
-    it("rekeys comments for PRs after deleted index", async () => {
+    it("rekeys comments within reviews for PRs after deleted index", async () => {
       // Start with clean state
       await deleteJSON("/api/prs");
 
@@ -542,13 +532,13 @@ describe("server endpoints", () => {
       // Delete PR at index 0
       await deleteJSON(`/api/pr/${indices[0]}`);
 
-      const comments = await getJSON("/api/comments") as Record<string, string | null>;
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
       // Original index 1 (now 0) should have its comment
-      expect(comments["0-0"]).toBe("comment 1");
+      expect(reviews["0-0"].comment).toBe("comment 1");
       // Original index 2 (now 1) should have its comment
-      expect(comments["1-0"]).toBe("comment 2");
+      expect(reviews["1-0"].comment).toBe("comment 2");
       // Old key "2-0" must not exist
-      expect(comments["2-0"]).toBeUndefined();
+      expect(reviews["2-0"]).toBeUndefined();
     });
 
     it("preserves reviews for PRs before deleted index", async () => {
@@ -569,10 +559,10 @@ describe("server endpoints", () => {
       // Delete the last PR (index 2)
       await deleteJSON(`/api/pr/${indices[2]}`);
 
-      const reviews = await getJSON("/api/reviews") as Record<string, string>;
+      const reviews = await getJSON("/api/reviews") as Record<string, { verdict: string; comment: string | null }>;
       // PRs 0 and 1 should keep their reviews unchanged
-      expect(reviews["0-0"]).toBe("rejected");
-      expect(reviews["1-0"]).toBe("rejected");
+      expect(reviews["0-0"].verdict).toBe("rejected");
+      expect(reviews["1-0"].verdict).toBe("rejected");
     });
   });
 });

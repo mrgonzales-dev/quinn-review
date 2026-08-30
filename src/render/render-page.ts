@@ -258,22 +258,18 @@ ${landing}
     }
 
     (function loadSavedReviews() {
-      Promise.all([
-        fetch("/api/reviews").then(function(r) { return r.json(); }),
-        fetch("/api/comments").then(function(r) { return r.json(); })
-      ]).then(function(results) {
-        var reviews = results[0];
-        var comments = results[1];
+      fetch("/api/reviews").then(function(r) { return r.json(); }).then(function(reviews) {
         var prIndices = {};
         Object.keys(reviews).forEach(function(idSuffix) {
-          var action = reviews[idSuffix];
+          var entry = reviews[idSuffix];
+          var action = entry.verdict;
           var badge = document.getElementById("badge-" + idSuffix);
           if (!badge) return;
           applyBadgeState(idSuffix, action);
           showCommentInput(idSuffix, true);
-          if (comments[idSuffix]) {
+          if (entry.comment) {
             var input = document.getElementById("comment-input-" + idSuffix);
-            if (input) input.value = comments[idSuffix];
+            if (input) input.value = entry.comment;
           }
           prIndices[idSuffix.split("-")[0]] = true;
         });

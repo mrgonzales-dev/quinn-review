@@ -46,8 +46,7 @@ async function apiPut(path: string, body: unknown): Promise<unknown> {
 
 export function mergePrsWithReviews(
   prs: Array<{ title: string; description: string; branch: string; label?: string; files: Array<{ path: string }>; completed?: boolean }>,
-  reviews: Record<string, string>,
-  comments: Record<string, string | null> = {},
+  reviews: Record<string, { verdict: string; comment: string | null }>,
 ): Array<{
   index: number;
   label: string | null;
@@ -64,11 +63,12 @@ export function mergePrsWithReviews(
     completed: pr.completed ?? false,
     files: pr.files.map((file, fi) => {
       const key = `${i}-${fi}`;
-      const verdict = reviews[key] ?? "pending";
+      const entry = reviews[key];
+      const verdict = entry?.verdict ?? "pending";
       return {
         path: file.path,
         verdict,
-        comment: verdict === "pending" ? null : (comments[key] ?? null),
+        comment: verdict === "pending" ? null : (entry?.comment ?? null),
       };
     }),
   }));
@@ -402,7 +402,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
       name: "quinn_reviews",
       description:
         "Get all review decisions from the user. " +
-        "Returns a map of file IDs (format: {prIndex}-{fileIndex}) to 'approved' or 'rejected'. " +
+        "Returns a map of file IDs (format: {prIndex}-{fileIndex}) to objects with verdict ('approved' or 'rejected') and comment (string or null). " +
         "Call this after the user has reviewed the PR in their browser. " +
         "Only apply changes that the user approved. Skip rejected files.",
       inputSchema: { type: "object", properties: {}, required: [] },
@@ -456,15 +456,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "quinn_list_prs": {
-        const [prsResult, reviewsResult, commentsResult] = await Promise.all([
+        const [prsResult, reviewsResult] = await Promise.all([
           apiGet("/api/prs"),
           apiGet("/api/reviews"),
-          apiGet("/api/comments"),
         ]);
         const prs = prsResult as Array<{ title: string; description: string; branch: string; label?: string; files: Array<{ path: string }>; completed?: boolean }>;
-        const reviews = reviewsResult as Record<string, string>;
-        const comments = commentsResult as Record<string, string | null>;
-        const summary = mergePrsWithReviews(prs, reviews, comments);
+        const reviews = reviewsResult as Record<string, { verdict: string; comment: string | null }>;
+        const summary = mergePrsWithReviews(prs, reviews);
         return { content: [{ type: "text", text: JSON.stringify(summary, null, 2) }] };
       }
 
