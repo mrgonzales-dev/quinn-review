@@ -97,7 +97,7 @@ Quinn lets you send proposed code changes to a human reviewer. The reviewer sees
 
 ## How to format diffs
 
-Dissect each file change into separate diff hunks. One hunk per logical change. Do NOT lump all changes into one giant block.
+Break each file change into separate diff hunks. One hunk per logical change. Do NOT lump all changes into one giant block.
 
 Bad: one hunk with 50 lines covering 7 different fixes.
 Good: 7 hunks, each with 2-3 lines of context around the change.
@@ -109,14 +109,16 @@ Each diff line has a type:
 
 Include 1-3 context lines before and after each change so the reviewer can see where the change sits.
 
-## How to split PRs
+## How to group PRs
 
-One PR per logical unit of work. Examples:
-- One PR per bug fix
-- One PR per feature
-- One PR per file if the changes are unrelated
+Group related changes into one PR. One PR per goal or feature, not one PR per file or per fix.
 
-If a file has multiple independent fixes, split them into separate PRs. Each PR should have a focused title and description.
+Examples:
+- Four zoom-related bug fixes → one PR titled "Fix zoom bugs" with 4 files
+- One new feature spanning 3 files → one PR with 3 files
+- Unrelated changes (a bug fix and a separate feature) → two PRs
+
+Do NOT split changes that share a common goal into separate PRs. If all the fixes target the same feature or subsystem, put them in one PR.
 
 ## How to write explanations
 
@@ -155,7 +157,7 @@ server.setRequestHandler(ListPromptsRequestSchema, () => ({
     {
       name: "quinn_guide",
       description:
-        "Full instructions on how to use Quinn tools, format diffs, split PRs, and batch requests. Read this before using Quinn tools.",
+        "Full instructions on how to use Quinn tools, format diffs, group PRs, and batch requests. Read this before using Quinn tools.",
       arguments: [],
     },
   ],
@@ -200,11 +202,12 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "The PR contains a title, description, branch name, and files with line-by-line diffs and explanations. " +
         "The user reviews it in their browser at http://localhost:2400. " +
         "\n\n" +
-        "IMPORTANT: Dissect each file's changes into separate diff hunks — one hunk per logical change. " +
+        "IMPORTANT: Break each file's changes into separate diff hunks — one hunk per logical change. " +
         "Do NOT lump all changes into one giant block. " +
         "Include 1-3 context lines around each change so the reviewer understands where it sits. " +
         "\n\n" +
-        "One PR per logical unit of work. If a file has multiple independent fixes, split them into separate PRs. " +
+        "Group related changes into one PR. One PR per goal or feature, not one PR per fix. " +
+        "If multiple fixes target the same subsystem, put them in one PR. " +
         "Each file needs a specific explanation of what changed and why. " +
         "\n\n" +
         "Sample:\n" +
@@ -288,7 +291,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Update an existing PR by index. Replaces the PR content (title, description, branch, files). " +
         "Clears all review decisions for that PR and resets completed status, putting it back up for review. " +
         "Use this when the user requested changes to a PR you already submitted. " +
-        "Same diff formatting rules apply: dissect into separate hunks per logical change, include context lines.",
+        "Same diff formatting rules apply: break into separate hunks per logical change, include context lines.",
       inputSchema: {
         type: "object",
         properties: {
@@ -345,7 +348,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Each PR follows the same format as quinn_send_pr. " +
         "Use this when you have 2-5 PRs ready to review. " +
         "\n\n" +
-        "Same rules apply: dissect diffs into separate hunks per logical change, include context lines, write specific explanations.",
+        "Same rules apply: break diffs into separate hunks per logical change, include context lines, write specific explanations.",
       inputSchema: {
         type: "object",
         properties: {

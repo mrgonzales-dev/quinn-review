@@ -142,7 +142,7 @@ The key format is `{prIndex}-{fileIndex}`. Only apply changes for files marked `
 - Keep diffs focused. Show enough context lines (2-3 around changes) so the user understands the surrounding code.
 - Write clear explanations. The user should understand *why* without reading the diff.
 - Do not write code to the user's project files. Send PRs via the API. Apply code only after the user approves.
-- If the task is large, split it into multiple PRs. Send each PR as a separate `POST /api/pr` call.
+- Group related changes into one PR. One PR per goal or feature, not one PR per file or per fix. If multiple fixes target the same subsystem, put them in one PR. A PR can have multiple file changes as long as they share the same goal or idea. Only split into separate PRs when changes are unrelated.
 - The `additions` and `deletions` counts must match the actual number of `added` and `removed` lines in the diff array. The server rejects PRs where these do not match.
 
 ## Communication Standard — ASD-STE100
