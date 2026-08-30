@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { mergePrsWithReviews } from "../src/mcp-server.ts";
+import { mergePrsWithReviews, slugify } from "../src/mcp-server.ts";
 
 type PRData = {
   title: string;
@@ -11,6 +11,36 @@ type PRData = {
 };
 
 type Reviews = Record<string, { verdict: string; comment: string | null }>;
+
+// ── slugify ────────────────────────────────────────────────────
+
+describe("slugify", () => {
+  it("converts name to lowercase kebab-case", () => {
+    expect(slugify("My Cool Project")).toBe("my-cool-project");
+  });
+
+  it("removes special characters", () => {
+    expect(slugify("My Cool Project!")).toBe("my-cool-project");
+  });
+
+  it("handles multiple spaces", () => {
+    expect(slugify("My   Spaced   Project")).toBe("my-spaced-project");
+  });
+
+  it("handles empty string", () => {
+    expect(slugify("")).toBe("");
+  });
+
+  it("handles numbers in name", () => {
+    expect(slugify("Project 42")).toBe("project-42");
+  });
+
+  it("handles leading and trailing spaces", () => {
+    expect(slugify("  Trimmed  ")).toBe("trimmed");
+  });
+});
+
+// ── mergePrsWithReviews ────────────────────────────────────────
 
 describe("mergePrsWithReviews", () => {
   it("returns empty array for no PRs", () => {

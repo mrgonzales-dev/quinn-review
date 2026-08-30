@@ -22,3 +22,21 @@ export interface PRData {
   files: PRFile[];
   completed?: boolean;
 }
+
+export interface ReviewEntry {
+  verdict: string;
+  comment: string | null;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  theme: string;
+  prs: PRData[];
+  reviews: Record<string, ReviewEntry>;
+}
+
+export interface QuinnData {
+  settings: { firstTimeSeen: boolean };
+  projects: Project[];
+}

@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
  * server.ts — Quinn review server.
- * Serves the PR review page and provides API endpoints for PR management
- * and review decisions.
+ * Serves the PR review page and provides API endpoints for project management,
+ * PR management, and review decisions.
  *
  * Usage: bun run server.ts [path-to-quinn-data.json]
  * Default: ./quinn-data.json
@@ -11,36 +11,47 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { execSync, spawn } from "node:child_process";
-import type { PRData, PRFile, DiffLine } from "./src/types.ts";
+import type { PRData, PRFile, DiffLine, QuinnData, Project, ReviewEntry } from "./src/types.ts";
 import { renderPage } from "./src/render/render-page.ts";
 
 const dataPath = resolve(process.env.QUINN_DATA ?? process.argv[2] ?? "./quinn-data.json");
 const PORT = parseInt(process.env.QUINN_PORT ?? "2400", 10);
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
 
-interface ReviewEntry {
-  verdict: string;
-  comment: string | null;
-}
+const VALID_THEMES = ["blue", "green", "purple", "orange", "red", "teal"];
 
-interface QuinnData {
-  prs: PRData[];
-  reviews: Record<string, ReviewEntry>;
+// ── Data layer ─────────────────────────────────────────────────
+
+function slugify(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }
 
 function loadData(): QuinnData {
-  if (!existsSync(dataPath)) return { prs: [], reviews: {} };
+  if (!existsSync(dataPath)) {
+    return { settings: { firstTimeSeen: false }, projects: [] };
+  }
   try {
     const raw = readFileSync(dataPath, "utf-8");
     const parsed = JSON.parse(raw);
-    // Migrate old format: bare array of PRs
-    if (Array.isArray(parsed)) return { prs: parsed, reviews: {} };
-    return {
-      prs: Array.isArray(parsed.prs) ? parsed.prs : [],
-      reviews: typeof parsed.reviews === "object" && parsed.reviews !== null ? parsed.reviews : {},
-    };
+
+    // New format: { settings, projects }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Array.isArray(parsed.projects)) {
+      return {
+        settings: parsed.settings && typeof parsed.settings === "object"
+          ? { firstTimeSeen: !!parsed.settings.firstTimeSeen }
+          : { firstTimeSeen: false },
+        projects: parsed.projects,
+      };
+    }
+
+    return { settings: { firstTimeSeen: false }, projects: [] };
   } catch {
-    return { prs: [], reviews: {} };
+    return { settings: { firstTimeSeen: false }, projects: [] };
   }
 }
 
@@ -48,25 +59,11 @@ function saveData(data: QuinnData): void {
   writeFileSync(dataPath, JSON.stringify(data, null, 2), "utf-8");
 }
 
-function loadPRData(): PRData[] {
-  return loadData().prs;
+function findProject(data: QuinnData, id: string): Project | undefined {
+  return data.projects.find(p => p.id === id);
 }
 
-function savePRData(prs: PRData[]): void {
-  const data = loadData();
-  data.prs = prs;
-  saveData(data);
-}
-
-function loadReviews(): Record<string, ReviewEntry> {
-  return loadData().reviews;
-}
-
-function saveReviews(reviews: Record<string, ReviewEntry>): void {
-  const data = loadData();
-  data.reviews = reviews;
-  saveData(data);
-}
+// ── Validation ─────────────────────────────────────────────────
 
 export function validateDiffLine(line: unknown): string | null {
   if (typeof line !== "object" || line === null) return "Diff line must be an object";
@@ -154,11 +151,30 @@ export function validatePR(pr: unknown): string | null {
   return null;
 }
 
+// ── Helpers ────────────────────────────────────────────────────
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function rekeyReviews(reviews: Record<string, ReviewEntry>, deletedIndex: number): Record<string, ReviewEntry> {
+  const rekeyed: Record<string, ReviewEntry> = {};
+  for (const [key, val] of Object.entries(reviews)) {
+    const m = key.match(/^(\d+)-(\d+)$/);
+    if (!m) continue;
+    const prIdx = parseInt(m[1], 10);
+    const fileIdx = parseInt(m[2], 10);
+    if (prIdx === deletedIndex) continue;
+    if (prIdx > deletedIndex) {
+      rekeyed[`${prIdx - 1}-${fileIdx}`] = val;
+    } else {
+      rekeyed[key] = val;
+    }
+  }
+  return rekeyed;
 }
 
 let serverInstance: ReturnType<typeof Bun.serve> | null = null;
@@ -179,7 +195,7 @@ export function main() {
 
       // Serve the review page
       if (path === "/" || path === "/index.html") {
-        const data = loadPRData();
+        const data = loadData();
         const mcpPath = resolve(import.meta.dir, "src/mcp-server.ts");
         const html = renderPage(data, mcpPath);
 
@@ -188,49 +204,153 @@ export function main() {
         });
       }
 
-      // Health check
+      // ── Health check ──────────────────────────────────────────
+
       if (path === "/api/health" && req.method === "GET") {
         const data = loadData();
-        const completed = data.prs.filter(d => d.completed).length;
-        return json({ ok: true, prs: data.prs.length, reviews: Object.keys(data.reviews).length, completed });
+        return json({ ok: true, projects: data.projects.length });
       }
 
-      // GET all PRs
-      if (path === "/api/prs" && req.method === "GET") {
-        return json(loadPRData());
+      // ── Settings ──────────────────────────────────────────────
+
+      if (path === "/api/settings" && req.method === "GET") {
+        const data = loadData();
+        return json(data.settings);
       }
 
-      // POST a new PR (validate + append)
-      if (path === "/api/pr" && req.method === "POST") {
-        const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
-        if (contentLength > MAX_BODY_SIZE) {
-          return json({ error: "Request body too large (max 10 MB)" }, 413);
-        }
+      if (path === "/api/settings" && req.method === "POST") {
         try {
           const body = await req.json();
-          const err = validatePR(body);
-          if (err) return json({ error: err }, 400);
+          if (typeof body.firstTimeSeen !== "boolean") {
+            return json({ error: "firstTimeSeen must be a boolean" }, 400);
+          }
           const data = loadData();
-          data.prs.push(body as PRData);
+          data.settings = { firstTimeSeen: body.firstTimeSeen };
           saveData(data);
-          return json({ ok: true, index: data.prs.length - 1, total: data.prs.length });
+          return json({ ok: true });
         } catch {
           return json({ error: "Bad request body" }, 400);
         }
       }
 
-      // DELETE all PRs (also clears reviews)
-      if (path === "/api/prs" && req.method === "DELETE") {
-        saveData({ prs: [], reviews: {} });
+      // ── Project CRUD ──────────────────────────────────────────
+
+      if (path === "/api/projects" && req.method === "GET") {
+        const data = loadData();
+        return json(data.projects.map(p => ({
+          id: p.id,
+          name: p.name,
+          theme: p.theme,
+          prs: p.prs.length,
+        })));
+      }
+
+      if (path === "/api/project" && req.method === "POST") {
+        try {
+          const body = await req.json();
+          if (typeof body.name !== "string" || !body.name) {
+            return json({ error: "Project name must be a non-empty string" }, 400);
+          }
+          const theme = body.theme ?? "blue";
+          if (!VALID_THEMES.includes(theme)) {
+            return json({ error: `Invalid theme. Must be one of: ${VALID_THEMES.join(", ")}` }, 400);
+          }
+          const id = slugify(body.name);
+          const data = loadData();
+          if (findProject(data, id)) {
+            return json({ error: `Project '${id}' already exists` }, 400);
+          }
+          const project: Project = { id, name: body.name, theme, prs: [], reviews: {} };
+          data.projects.push(project);
+          saveData(data);
+          return json({ ok: true, id, name: body.name, theme });
+        } catch {
+          return json({ error: "Bad request body" }, 400);
+        }
+      }
+
+      const projectGetMatch = path.match(/^\/api\/project\/([^/]+)$/);
+      if (projectGetMatch && req.method === "GET") {
+        const id = projectGetMatch[1];
+        const data = loadData();
+        const project = findProject(data, id);
+        if (!project) return json({ error: "Project not found" }, 404);
+        return json({
+          id: project.id,
+          name: project.name,
+          theme: project.theme,
+          prs: project.prs.length,
+        });
+      }
+
+      if (projectGetMatch && req.method === "DELETE") {
+        const id = projectGetMatch[1];
+        const data = loadData();
+        const idx = data.projects.findIndex(p => p.id === id);
+        if (idx === -1) return json({ error: "Project not found" }, 404);
+        data.projects.splice(idx, 1);
+        saveData(data);
         return json({ ok: true });
       }
 
-      // POST a batch of PRs (up to 5)
-      if (path === "/api/prs/batch" && req.method === "POST") {
+      // ── Project-scoped PR operations ──────────────────────────
+
+      // POST /api/project/:id/pr — add a PR
+      const prPostMatch = path.match(/^\/api\/project\/([^/]+)\/pr$/);
+      if (prPostMatch && req.method === "POST") {
+        const projectId = prPostMatch[1];
         const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
         if (contentLength > MAX_BODY_SIZE) {
           return json({ error: "Request body too large (max 10 MB)" }, 413);
         }
+        const data = loadData();
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+        try {
+          const body = await req.json();
+          const err = validatePR(body);
+          if (err) return json({ error: err }, 400);
+          project.prs.push(body as PRData);
+          saveData(data);
+          return json({ ok: true, index: project.prs.length - 1, total: project.prs.length });
+        } catch {
+          return json({ error: "Bad request body" }, 400);
+        }
+      }
+
+      // GET /api/project/:id/prs — list all PRs
+      const prsGetMatch = path.match(/^\/api\/project\/([^/]+)\/prs$/);
+      if (prsGetMatch && req.method === "GET") {
+        const projectId = prsGetMatch[1];
+        const data = loadData();
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+        return json(project.prs);
+      }
+
+      // DELETE /api/project/:id/prs — clear all PRs and reviews
+      if (prsGetMatch && req.method === "DELETE") {
+        const projectId = prsGetMatch[1];
+        const data = loadData();
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+        project.prs = [];
+        project.reviews = {};
+        saveData(data);
+        return json({ ok: true });
+      }
+
+      // POST /api/project/:id/prs/batch — add multiple PRs
+      const batchMatch = path.match(/^\/api\/project\/([^/]+)\/prs\/batch$/);
+      if (batchMatch && req.method === "POST") {
+        const projectId = batchMatch[1];
+        const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
+        if (contentLength > MAX_BODY_SIZE) {
+          return json({ error: "Request body too large (max 10 MB)" }, 413);
+        }
+        const data = loadData();
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
         try {
           const body = await req.json();
           if (!Array.isArray(body) || body.length === 0) {
@@ -247,80 +367,73 @@ export function main() {
           if (errors.length > 0) {
             return json({ error: "Validation failed", details: errors }, 400);
           }
-          const data = loadData();
-          const startIndex = data.prs.length;
+          const startIndex = project.prs.length;
           for (const pr of body) {
-            data.prs.push(pr as PRData);
+            project.prs.push(pr as PRData);
           }
           saveData(data);
-          return json({ ok: true, startIndex, count: body.length, total: data.prs.length });
+          return json({ ok: true, startIndex, count: body.length, total: project.prs.length });
         } catch {
           return json({ error: "Bad request body" }, 400);
         }
       }
 
-      // GET a single PR by index
-      const prGetMatch = path.match(/^\/api\/pr\/(\d+)$/);
-      if (prGetMatch && req.method === "GET") {
-        const index = parseInt(prGetMatch[1], 10);
-        const data = loadPRData();
-        if (index < 0 || index >= data.length) {
-          return json({ error: "PR index out of range" }, 400);
-        }
-        return json(data[index]);
-      }
-
-      // DELETE a single PR by index (also removes and rekeys reviews)
-      if (prGetMatch && req.method === "DELETE") {
-        const index = parseInt(prGetMatch[1], 10);
+      // GET /api/project/:id/pr/:index — get single PR
+      const prIdxMatch = path.match(/^\/api\/project\/([^/]+)\/pr\/(\d+)$/);
+      if (prIdxMatch && req.method === "GET") {
+        const projectId = prIdxMatch[1];
+        const index = parseInt(prIdxMatch[2], 10);
         const data = loadData();
-        if (index < 0 || index >= data.prs.length) {
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+        if (index < 0 || index >= project.prs.length) {
           return json({ error: "PR index out of range" }, 400);
         }
-        data.prs.splice(index, 1);
-        // Remove reviews for deleted PR, rekey higher indices down by one
-        const rekeyed: Record<string, ReviewEntry> = {};
-        for (const [key, val] of Object.entries(data.reviews)) {
-          const m = key.match(/^(\d+)-(\d+)$/);
-          if (!m) continue;
-          const prIdx = parseInt(m[1], 10);
-          const fileIdx = parseInt(m[2], 10);
-          if (prIdx === index) continue; // deleted PR
-          if (prIdx > index) {
-            rekeyed[`${prIdx - 1}-${fileIdx}`] = val;
-          } else {
-            rekeyed[key] = val;
-          }
-        }
-        data.reviews = rekeyed;
-        saveData(data);
-        return json({ ok: true, total: data.prs.length });
+        return json(project.prs[index]);
       }
 
-      // PUT (update) a single PR by index — replaces PR, clears reviews, resets completed
-      if (prGetMatch && req.method === "PUT") {
-        const index = parseInt(prGetMatch[1], 10);
+      // DELETE /api/project/:id/pr/:index — remove PR, rekey reviews
+      if (prIdxMatch && req.method === "DELETE") {
+        const projectId = prIdxMatch[1];
+        const index = parseInt(prIdxMatch[2], 10);
+        const data = loadData();
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+        if (index < 0 || index >= project.prs.length) {
+          return json({ error: "PR index out of range" }, 400);
+        }
+        project.prs.splice(index, 1);
+        project.reviews = rekeyReviews(project.reviews, index);
+        saveData(data);
+        return json({ ok: true, total: project.prs.length });
+      }
+
+      // PUT /api/project/:id/pr/:index — replace PR, clear reviews, reset completed
+      if (prIdxMatch && req.method === "PUT") {
+        const projectId = prIdxMatch[1];
+        const index = parseInt(prIdxMatch[2], 10);
         const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
         if (contentLength > MAX_BODY_SIZE) {
           return json({ error: "Request body too large (max 10 MB)" }, 413);
         }
+        const data = loadData();
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
         try {
           const body = await req.json();
           const err = validatePR(body);
           if (err) return json({ error: err }, 400);
-          const data = loadData();
-          if (index < 0 || index >= data.prs.length) {
+          if (index < 0 || index >= project.prs.length) {
             return json({ error: "PR index out of range" }, 400);
           }
           const updated = body as PRData;
           updated.completed = false;
-          data.prs[index] = updated;
-          // Remove all reviews for this PR
+          project.prs[index] = updated;
           const prefix = `${index}-`;
           let removed = 0;
-          for (const key of Object.keys(data.reviews)) {
+          for (const key of Object.keys(project.reviews)) {
             if (key.startsWith(prefix)) {
-              delete data.reviews[key];
+              delete project.reviews[key];
               removed++;
             }
           }
@@ -331,13 +444,25 @@ export function main() {
         }
       }
 
-      // GET all reviews
-      if (path === "/api/reviews" && req.method === "GET") {
-        return json(loadReviews());
+      // ── Project-scoped review operations ──────────────────────
+
+      // GET /api/project/:id/reviews — all reviews
+      const reviewsGetMatch = path.match(/^\/api\/project\/([^/]+)\/reviews$/);
+      if (reviewsGetMatch && req.method === "GET") {
+        const projectId = reviewsGetMatch[1];
+        const data = loadData();
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+        return json(project.reviews);
       }
 
-      // POST a review decision
-      if (path === "/api/review" && req.method === "POST") {
+      // POST /api/project/:id/review — save a review
+      const reviewPostMatch = path.match(/^\/api\/project\/([^/]+)\/review$/);
+      if (reviewPostMatch && req.method === "POST") {
+        const projectId = reviewPostMatch[1];
+        const data = loadData();
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
         try {
           const body = await req.json();
           const { idSuffix, action, comment } = body;
@@ -356,8 +481,7 @@ export function main() {
             }
           }
           const normalizedComment = comment && comment.length > 0 ? comment : null;
-          const data = loadData();
-          data.reviews[idSuffix] = { verdict: action, comment: normalizedComment };
+          project.reviews[idSuffix] = { verdict: action, comment: normalizedComment };
           saveData(data);
           return json({ ok: true });
         } catch {
@@ -365,32 +489,41 @@ export function main() {
         }
       }
 
-      // DELETE a single review by idSuffix
-      const reviewDelMatch = path.match(/^\/api\/review\/(\d+-\d+)$/);
+      // DELETE /api/project/:id/review/:idSuffix — remove a review
+      const reviewDelMatch = path.match(/^\/api\/project\/([^/]+)\/review\/(\d+-\d+)$/);
       if (reviewDelMatch && req.method === "DELETE") {
-        const idSuffix = reviewDelMatch[1];
+        const projectId = reviewDelMatch[1];
+        const idSuffix = reviewDelMatch[2];
         const data = loadData();
-        if (!(idSuffix in data.reviews)) {
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+        if (!(idSuffix in project.reviews)) {
           return json({ error: "Review not found" }, 404);
         }
-        delete data.reviews[idSuffix];
+        delete project.reviews[idSuffix];
         saveData(data);
         return json({ ok: true });
       }
 
-      // POST complete a PR (mark as done)
-      if (path === "/api/complete" && req.method === "POST") {
+      // ── Project-scoped complete ───────────────────────────────
+
+      // POST /api/project/:id/complete — mark PR completed
+      const completePostMatch = path.match(/^\/api\/project\/([^/]+)\/complete$/);
+      if (completePostMatch && req.method === "POST") {
+        const projectId = completePostMatch[1];
+        const data = loadData();
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
         try {
           const body = await req.json();
           const { prIndex } = body;
           if (typeof prIndex !== "number" || prIndex < 0) {
             return json({ error: "Invalid request. Need prIndex (non-negative number)" }, 400);
           }
-          const data = loadData();
-          if (prIndex >= data.prs.length) {
+          if (prIndex >= project.prs.length) {
             return json({ error: "PR index out of range" }, 400);
           }
-          data.prs[prIndex].completed = true;
+          project.prs[prIndex].completed = true;
           saveData(data);
           return json({ ok: true, prIndex });
         } catch {
@@ -398,20 +531,24 @@ export function main() {
         }
       }
 
-      // DELETE complete status from a PR (unmark)
-      const completeDelMatch = path.match(/^\/api\/complete\/(\d+)$/);
+      // DELETE /api/project/:id/complete/:prIndex — unmark PR
+      const completeDelMatch = path.match(/^\/api\/project\/([^/]+)\/complete\/(\d+)$/);
       if (completeDelMatch && req.method === "DELETE") {
-        const prIndex = parseInt(completeDelMatch[1], 10);
+        const projectId = completeDelMatch[1];
+        const prIndex = parseInt(completeDelMatch[2], 10);
         const data = loadData();
-        if (prIndex < 0 || prIndex >= data.prs.length) {
+        const project = findProject(data, projectId);
+        if (!project) return json({ error: "Project not found" }, 404);
+        if (prIndex < 0 || prIndex >= project.prs.length) {
           return json({ error: "PR index out of range" }, 400);
         }
-        data.prs[prIndex].completed = false;
+        project.prs[prIndex].completed = false;
         saveData(data);
         return json({ ok: true, prIndex });
       }
 
-      // Check for updates — compare local HEAD with GitHub remote main
+      // ── Update check / apply ──────────────────────────────────
+
       if (path === "/api/update-check" && req.method === "GET") {
         try {
           const currentSha = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
@@ -431,7 +568,6 @@ export function main() {
         }
       }
 
-      // Apply update — git pull origin main
       if (path === "/api/update" && req.method === "POST") {
         try {
           const output = execSync("git pull origin main", { encoding: "utf-8", stderr: "pipe" });
@@ -442,7 +578,8 @@ export function main() {
         }
       }
 
-      // Serve static icons (favicon, apple-touch-icon, etc.)
+      // ── Static icons ──────────────────────────────────────────
+
       const iconMatch = path.match(/^\/(favicon\.ico|favicon-16\.png|favicon-32\.png|apple-touch-icon\.png|icon-192\.png|icon-512\.png|quinn-logo\.png)$/);
       if (iconMatch) {
         try {
@@ -463,7 +600,7 @@ export function main() {
 
   const data = loadData();
   console.log("\n  Quinn — review server running\n");
-  console.log(`  PRs: ${data.prs.length}`);
+  console.log(`  Projects: ${data.projects.length}`);
   console.log(`  URL: http://localhost:${serverInstance.port}`);
   console.log(`  Data: ${dataPath}\n`);
 

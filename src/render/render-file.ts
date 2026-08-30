@@ -2,7 +2,7 @@ import type { PRFile } from "../types.ts";
 import { renderDiffLines } from "./render-diff.ts";
 import { escapeHtml } from "../escape.ts";
 
-export function renderFile(file: PRFile, fileIndex: number, prIndex: number): string {
+export function renderFile(file: PRFile, fileIndex: number, prIndex: number, _projectId?: string): string {
   const statusLabel =
     file.status === "added"
       ? "added"

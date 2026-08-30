@@ -1,8 +1,8 @@
-import type { PRData } from "../types.ts";
+import type { PRData, Project } from "../types.ts";
 import { escapeHtml } from "../escape.ts";
 
-export function renderSidebar(prs: PRData[]): string {
-  const items = prs
+export function renderSidebar(project: Project, allProjects: Project[]): string {
+  const items = project.prs
     .map((pr, index) => {
       const totalAdditions = pr.files.reduce((sum, f) => sum + f.additions, 0);
       const totalDeletions = pr.files.reduce((sum, f) => sum + f.deletions, 0);
@@ -23,13 +23,18 @@ export function renderSidebar(prs: PRData[]): string {
     })
     .join("\n");
 
+  const projectTabs = allProjects.map(p =>
+    `<span class="project-tab ${p.id === project.id ? "active" : ""}" onclick="window.location.href='/?project=${encodeURIComponent(p.id)}'">${escapeHtml(p.name)}</span>`
+  ).join("");
+
   return `    <div class="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-brand">
           <img src="/quinn-logo.png" alt="Quinn" class="sidebar-logo" />
           <h1>Quinn</h1>
         </div>
-        <p>${prs.length} pull request${prs.length === 1 ? "" : "s"} for review</p>
+        <div class="project-tabs">${projectTabs}</div>
+        <p>${project.prs.length} pull request${project.prs.length === 1 ? "" : "s"} for review</p>
         <div class="update-badge" id="update-badge" style="display:none;">
           <span class="update-badge-dot"></span>
           <span class="update-badge-text">Update available</span>

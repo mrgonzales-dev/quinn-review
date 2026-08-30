@@ -44,7 +44,7 @@ export function renderLanding(mcpPath: string): string {
             <span class="landing-step-num">4</span>
             <div class="landing-step-content">
               <div class="landing-step-title">Give the agent a task</div>
-              <div class="landing-step-desc">Ask your AI agent to make changes. The agent sends proposed PRs to this server. They appear here for your review.</div>
+              <div class="landing-step-desc">Ask your AI agent to make changes. The agent creates a project and sends proposed PRs to this server. They appear here for your review.</div>
             </div>
           </div>
 
@@ -57,9 +57,9 @@ export function renderLanding(mcpPath: string): string {
           </div>
         </div>
 
-        <div class="landing-waiting">
-          <span class="landing-spinner"></span>
-          <span>Waiting for the agent to send proposed changes...</span>
+        <div class="landing-actions">
+          <button class="btn btn-primary" onclick="dismissLanding(false)">I Understand</button>
+          <button class="btn btn-secondary" onclick="dismissLanding(true)">Don't show me this again</button>
         </div>
       </div>
     </div>`;

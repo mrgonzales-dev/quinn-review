@@ -1,4 +1,5 @@
 export const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
   :root {
     --bg: #0d1117;
     --bg-secondary: #161b22;
@@ -23,7 +24,7 @@ export const STYLES = `
   ::-webkit-scrollbar-corner { background: var(--bg); }
   * { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-family: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.5;
@@ -150,6 +151,11 @@ export const STYLES = `
     padding: 24px 32px;
     max-width: calc(100vw - var(--sidebar-width));
     overflow-x: hidden;
+  }
+  .main.no-sidebar {
+    max-width: 100vw;
+    padding: 24px;
+    width: 100%;
   }
 
   /* PR Header */
@@ -391,5 +397,163 @@ export const STYLES = `
   }
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  /* ── Landing actions ─────────────────────────────────────────── */
+  .landing-actions {
+    display: flex; gap: 12px; justify-content: center; margin-top: 24px;
+  }
+  .btn-primary {
+    background: rgba(88,166,255,0.15); border: 1px solid rgba(88,166,255,0.4);
+    color: var(--accent); padding: 8px 20px; font-size: 14px; font-weight: 600;
+    border-radius: 8px; cursor: pointer; transition: background 0.15s;
+  }
+  .btn-primary:hover { background: rgba(88,166,255,0.25); }
+  .btn-secondary {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--text-muted); padding: 8px 20px; font-size: 14px;
+    border-radius: 8px; cursor: pointer; transition: background 0.15s;
+  }
+  .btn-secondary:hover { background: var(--bg-hover); color: var(--text); }
+
+  /* ── Project landing grid ────────────────────────────────────── */
+  .parent {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    grid-template-rows: 280px 1fr;
+    gap: 12px;
+    min-height: calc(100vh - 48px);
+  }
+  .parent > .div1 {
+    grid-column: span 6 / span 6;
+    grid-row: 1;
+  }
+  .parent > .div2 {
+    grid-column: span 5 / span 5;
+    grid-row: 2;
+  }
+  .parent > .div3 {
+    grid-column-start: 6;
+    grid-row: 2;
+  }
+
+  /* Hero (div1) */
+  .hero {
+    background: radial-gradient(ellipse at 30% 50%, rgba(88,166,255,0.08), transparent 60%),
+                linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+    border: 1px solid var(--border); border-radius: 16px;
+    padding: 40px 48px;
+    display: flex; align-items: center; gap: 32px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(88,166,255,0.4), transparent);
+  }
+  .hero-logo {
+    width: 64px; height: 64px; border-radius: 14px; flex-shrink: 0;
+    box-shadow: 0 0 24px rgba(88,166,255,0.15);
+  }
+  .hero-text { display: flex; flex-direction: column; gap: 6px; }
+  .hero-title {
+    font-size: 36px; font-weight: 700; color: var(--text);
+    letter-spacing: -1px; line-height: 1.1;
+  }
+  .hero-subtitle {
+    font-size: 15px; color: var(--text-muted); max-width: 520px;
+  }
+  .hero-badge {
+    margin-left: auto; padding: 6px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 500; color: #7ee787;
+    background: rgba(126,231,135,0.08); border: 1px solid rgba(126,231,135,0.2);
+    font-family: "Fira Code", ui-monospace, monospace;
+    flex-shrink: 0;
+  }
+
+  /* Project browser (div2) */
+  .project-browser {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 16px; padding: 24px; overflow-y: auto;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
+  .project-browser-header {
+    font-size: 18px; font-weight: 600; color: var(--text);
+    margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .project-browser-header svg { width: 20px; height: 20px; color: var(--accent); }
+  .project-browser-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+  }
+  .projects-empty {
+    grid-column: 1 / -1; padding: 60px 20px; text-align: center;
+    color: var(--text-muted); font-size: 15px;
+  }
+  .project-folder {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    border-radius: 12px; padding: 28px 20px; text-align: center;
+    cursor: pointer; position: relative; overflow: hidden;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  }
+  .project-folder::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: currentColor; opacity: 0.7;
+  }
+  .project-folder:hover {
+    transform: translateY(-3px); background: var(--bg-hover);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .project-folder-icon {
+    margin-bottom: 14px; line-height: 1;
+    display: flex; justify-content: center;
+  }
+  .project-folder-icon svg { width: 40px; height: 40px; }
+  .project-folder-name {
+    font-size: 15px; font-weight: 600; color: var(--text);
+    margin-bottom: 6px; word-break: break-word;
+  }
+  .project-folder-meta {
+    font-size: 12px; color: var(--text-muted);
+    font-family: "Fira Code", ui-monospace, SFMono-Regular, monospace;
+  }
+
+  /* div3 placeholder */
+  .div3 {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); font-size: 12px; text-align: center;
+    padding: 20px;
+  }
+
+  /* Theme colors for project folders */
+  .theme-blue { color: #58a6ff; }
+  .theme-blue:hover { border-color: rgba(88,166,255,0.5); box-shadow: 0 8px 24px rgba(88,166,255,0.1); }
+  .theme-green { color: #7ee787; }
+  .theme-green:hover { border-color: rgba(126,231,135,0.5); box-shadow: 0 8px 24px rgba(126,231,135,0.1); }
+  .theme-purple { color: #bc8cff; }
+  .theme-purple:hover { border-color: rgba(188,140,255,0.5); box-shadow: 0 8px 24px rgba(188,140,255,0.1); }
+  .theme-orange { color: #ffa657; }
+  .theme-orange:hover { border-color: rgba(255,166,87,0.5); box-shadow: 0 8px 24px rgba(255,166,87,0.1); }
+  .theme-red { color: #ff8182; }
+  .theme-red:hover { border-color: rgba(255,129,130,0.5); box-shadow: 0 8px 24px rgba(255,129,130,0.1); }
+  .theme-teal { color: #39c5cf; }
+  .theme-teal:hover { border-color: rgba(57,197,207,0.5); box-shadow: 0 8px 24px rgba(57,197,207,0.1); }
+
+  /* ── Project tabs in sidebar ─────────────────────────────────── */
+  .project-tabs {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+  }
+  .project-tab {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+  }
+  .project-tab:hover { color: var(--text); border-color: var(--accent); }
+  .project-tab.active {
+    color: var(--accent); border-color: rgba(88,166,255,0.4);
+    background: rgba(88,166,255,0.1);
   }
 `;

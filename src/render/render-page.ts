@@ -1,14 +1,15 @@
-import type { PRData } from "../types.ts";
+import type { PRData, QuinnData, Project } from "../types.ts";
 import { STYLES } from "../styles.ts";
 import { renderSidebar } from "./render-sidebar.ts";
 import { renderFile } from "./render-file.ts";
 import { renderLanding } from "./render-landing.ts";
+import { renderProjects } from "./render-projects.ts";
 import { escapeHtml } from "../escape.ts";
 
-function renderPRContent(pr: PRData, prIndex: number): string {
+function renderPRContent(pr: PRData, prIndex: number, projectId: string): string {
   const totalAdditions = pr.files.reduce((sum, f) => sum + f.additions, 0);
   const totalDeletions = pr.files.reduce((sum, f) => sum + f.deletions, 0);
-  const fileCards = pr.files.map((f, i) => renderFile(f, i, prIndex)).join("\n");
+  const fileCards = pr.files.map((f, i) => renderFile(f, i, prIndex, projectId)).join("\n");
   const completedClass = pr.completed ? " completed" : "";
 
   return `    <div class="pr-content${completedClass}" id="pr-content-${prIndex}" style="${prIndex === 0 ? "" : "display:none;"}">
@@ -38,11 +39,22 @@ ${fileCards}
     </div>`;
 }
 
-export function renderPage(prs: PRData[], mcpPath: string): string {
-  const hasPRs = prs.length > 0;
-  const sidebar = hasPRs ? renderSidebar(prs) : "";
-  const prContents = hasPRs ? prs.map((pr, i) => renderPRContent(pr, i)).join("\n") : "";
-  const landing = hasPRs ? "" : renderLanding(mcpPath);
+export function renderPage(data: QuinnData, mcpPath: string): string {
+  const hasProjects = data.projects.length > 0;
+  const showLanding = !hasProjects;
+
+  // Always render the projects grid so it is visible behind the landing overlay
+  const projectsGrid = renderProjects(data.projects);
+
+  // If a project has PRs, show the review view for the first project with PRs
+  const projectWithPRs = data.projects.find(p => p.prs.length > 0);
+  const activeProject = projectWithPRs ?? null;
+  const hasPRs = activeProject ? activeProject.prs.length > 0 : false;
+  const projectId = activeProject?.id ?? "";
+
+  const sidebar = hasPRs ? renderSidebar(activeProject!, data.projects) : "";
+  const prContents = hasPRs ? activeProject!.prs.map((pr, i) => renderPRContent(pr, i, projectId)).join("\n") : "";
+  const landing = showLanding ? renderLanding(mcpPath) : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -60,11 +72,13 @@ export function renderPage(prs: PRData[], mcpPath: string): string {
 </head>
 <body>
 ${sidebar}
-  <div class="main">
-${prContents}
+  <div class="main${hasPRs ? "" : " no-sidebar"}">
+${hasPRs ? prContents : projectsGrid}
   </div>
 ${landing}
   <script>
+    var PROJECT_ID = "${projectId}";
+
     function selectPR(index) {
       var prs = document.querySelectorAll(".pr-content");
       prs.forEach(function(el) { el.style.display = "none"; });
@@ -132,7 +146,7 @@ ${landing}
       var action = getBadgeAction(idSuffix);
       if (!action) return;
       var comment = getComment(idSuffix);
-      fetch("/api/review", {
+      fetch("/api/project/" + PROJECT_ID + "/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ idSuffix: idSuffix, action: action, comment: comment })
@@ -149,7 +163,7 @@ ${landing}
       if (currentAction === action) {
         applyBadgeState(idSuffix, null);
         showCommentInput(idSuffix, false);
-        fetch("/api/review/" + idSuffix, { method: "DELETE" })
+        fetch("/api/project/" + PROJECT_ID + "/review/" + idSuffix, { method: "DELETE" })
           .catch(function(e) {
             console.error("Failed to delete review:", e);
             applyBadgeState(idSuffix, currentAction);
@@ -158,7 +172,7 @@ ${landing}
         applyBadgeState(idSuffix, action);
         showCommentInput(idSuffix, true);
         var comment = getComment(idSuffix);
-        fetch("/api/review", {
+        fetch("/api/project/" + PROJECT_ID + "/review", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ idSuffix: idSuffix, action: action, comment: comment })
@@ -176,7 +190,7 @@ ${landing}
       applyBadgeState(idSuffix, action);
       showCommentInput(idSuffix, true);
       var comment = getComment(idSuffix);
-      fetch("/api/review", {
+      fetch("/api/project/" + PROJECT_ID + "/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ idSuffix: idSuffix, action: action, comment: comment })
@@ -226,7 +240,7 @@ ${landing}
     }
 
     function completePR(prIndex) {
-      fetch("/api/complete", {
+      fetch("/api/project/" + PROJECT_ID + "/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prIndex: prIndex })
@@ -269,7 +283,8 @@ ${landing}
     }
 
     (function loadSavedReviews() {
-      fetch("/api/reviews").then(function(r) { return r.json(); }).then(function(reviews) {
+      if (!PROJECT_ID) return;
+      fetch("/api/project/" + PROJECT_ID + "/reviews").then(function(r) { return r.json(); }).then(function(reviews) {
         var prIndices = {};
         Object.keys(reviews).forEach(function(idSuffix) {
           var entry = reviews[idSuffix];
@@ -343,14 +358,40 @@ ${landing}
       }
     }
 
-    (function pollForPRs() {
+    function dismissLanding(dontShowAgain) {
+      var overlay = document.getElementById("landing-overlay");
+      if (overlay) overlay.style.display = "none";
+      if (dontShowAgain) {
+        fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ firstTimeSeen: true })
+        }).catch(function(e) { console.error("Failed to save settings:", e); });
+      }
+    }
+
+    (function checkFirstTime() {
       var overlay = document.getElementById("landing-overlay");
       if (!overlay) return;
+      fetch("/api/settings")
+        .then(function(r) { return r.json(); })
+        .then(function(settings) {
+          if (settings.firstTimeSeen) {
+            overlay.style.display = "none";
+          }
+        })
+        .catch(function() {});
+    })();
+
+    (function pollForProjects() {
+      var grid = document.querySelector(".projects-grid");
+      var overlay = document.getElementById("landing-overlay");
+      if (!grid && !overlay) return;
       setInterval(function() {
-        fetch("/api/prs")
+        fetch("/api/projects")
           .then(function(r) { return r.json(); })
-          .then(function(prs) {
-            if (prs && prs.length > 0) {
+          .then(function(projects) {
+            if (projects && projects.length > 0 && !document.querySelector(".projects-grid")) {
               window.location.reload();
             }
           })

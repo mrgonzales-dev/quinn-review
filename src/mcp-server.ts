@@ -16,6 +16,15 @@ import {
 
 const SERVER = "http://localhost:2400";
 
+export function slugify(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
 async function apiGet(path: string): Promise<unknown> {
   const res = await fetch(`${SERVER}${path}`);
   return res.json();
@@ -83,17 +92,20 @@ const QUINN_GUIDE = `# Quinn — AI Code Review Skill
 
 Quinn lets you send proposed code changes to a human reviewer. The reviewer sees a GitHub-style PR page in their browser and approves or rejects each file.
 
+Quinn supports multiple projects. Each project is a separate folder with its own PRs and reviews. Create a project with quinn_create_project, then use the returned projectId for all other tools.
+
 ## Workflow
 
 1. Call quinn_start to verify the review server is running.
-2. Call quinn_clear to reset any old PRs from a previous session.
-3. Make your changes in the codebase.
-4. Build PRs from your changes. Call quinn_send_pr for a single PR, or quinn_send_batch for up to 5 PRs at once. Give each PR a short label (e.g. "bugfix", "feature", "refactor") so the user can identify it easily. You do not need to count additions or deletions — the server computes them from the diff array.
-5. Tell the user to review the changes at http://localhost:2400.
-6. Call quinn_list_prs to see all PRs with their indices, labels, and per-file review verdicts (approved/rejected/pending). Call quinn_get_pr to see full content of a specific PR. Call quinn_reviews to get the raw review map.
-7. If the user requested changes to a PR, call quinn_update_pr with the updated content. This clears old reviews and puts the PR back up for review.
-8. If a PR was sent by mistake, call quinn_delete_pr to remove it.
-9. Apply only the approved changes. Skip rejected files.
+2. Call quinn_list_projects to see existing projects. If none exist or you need a new one, call quinn_create_project with a name and optional theme (blue, green, purple, orange, red, teal).
+3. Call quinn_clear to reset any old PRs in the project from a previous session.
+4. Make your changes in the codebase.
+5. Build PRs from your changes. Call quinn_send_pr for a single PR, or quinn_send_batch for up to 5 PRs at once. Pass the projectId for the project you want to send to. Give each PR a short label (e.g. "bugfix", "feature", "refactor") so the user can identify it easily. You do not need to count additions or deletions — the server computes them from the diff array.
+6. Tell the user to review the changes at http://localhost:2400.
+7. Call quinn_list_prs with the projectId to see all PRs with their indices, labels, and per-file review verdicts (approved/rejected/pending). Call quinn_get_pr to see full content of a specific PR. Call quinn_reviews to get the raw review map.
+8. If the user requested changes to a PR, call quinn_update_pr with the projectId, prIndex, and updated content. This clears old reviews and puts the PR back up for review.
+9. If a PR was sent by mistake, call quinn_delete_pr with the projectId and prIndex to remove it.
+10. Apply only the approved changes. Skip rejected files.
 
 ## How to format diffs
 
@@ -191,8 +203,33 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
       name: "quinn_start",
       description:
         "Check if the Quinn review server is running. Call this first before sending any PRs. " +
-        "Returns health status including PR count and review count. " +
+        "Returns health status including project count. " +
         "If the server is not running, tell the user to start it with: bun run server.ts",
+      inputSchema: { type: "object", properties: {}, required: [] },
+    },
+    {
+      name: "quinn_create_project",
+      description:
+        "Create a new project folder on the review server. " +
+        "Each project holds its own set of PRs and reviews. " +
+        "The project ID is auto-generated from the name (slugified). " +
+        "Use this when working on a different codebase or feature set that should be reviewed separately. " +
+        "Themes: blue, green, purple, orange, red, teal. Defaults to blue.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Project name (e.g. 'My Cool App')" },
+          theme: { type: "string", enum: ["blue", "green", "purple", "orange", "red", "teal"], description: "Color theme for the project folder. Defaults to blue." },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "quinn_list_projects",
+      description:
+        "List all projects on the review server. " +
+        "Returns each project's id, name, theme, and PR count. " +
+        "Use this to find the projectId for other Quinn tools.",
       inputSchema: { type: "object", properties: {}, required: [] },
     },
     {
@@ -230,6 +267,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
       inputSchema: {
         type: "object",
         properties: {
+          projectId: { type: "string", description: "Project ID (slugified project name). Use quinn_list_projects to find it." },
           title: { type: "string", description: "PR title — short, focused on the change" },
           description: { type: "string", description: "PR description — what changed and why" },
           branch: { type: "string", description: "Branch name for the PR" },
@@ -272,18 +310,24 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
             },
           },
         },
-        required: ["title", "description", "branch", "files"],
+        required: ["projectId", "title", "description", "branch", "files"],
       },
     },
     {
       name: "quinn_list_prs",
       description:
-        "List all PRs on the review server with per-file review verdicts and comments. " +
+        "List all PRs in a project with per-file review verdicts and comments. " +
         "Returns an array of PRs with their index, label, title, branch, completed status, and files. " +
         "Each file shows its path, verdict ('approved', 'rejected', or 'pending'), and comment (null if none). " +
         "Use this to see the full review state in one call. " +
         "Call quinn_get_pr to see full diff content of a specific PR.",
-      inputSchema: { type: "object", properties: {}, required: [] },
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: { type: "string", description: "Project ID (slugified project name)" },
+        },
+        required: ["projectId"],
+      },
     },
     {
       name: "quinn_update_pr",
@@ -295,6 +339,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
       inputSchema: {
         type: "object",
         properties: {
+          projectId: { type: "string", description: "Project ID (slugified project name)" },
           prIndex: { type: "number", description: "Index of the PR to update" },
           title: { type: "string", description: "PR title — short, focused on the change" },
           description: { type: "string", description: "PR description — what changed and why" },
@@ -338,7 +383,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
             },
           },
         },
-        required: ["prIndex", "title", "description", "branch", "files"],
+        required: ["projectId", "prIndex", "title", "description", "branch", "files"],
       },
     },
     {
@@ -352,6 +397,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
       inputSchema: {
         type: "object",
         properties: {
+          projectId: { type: "string", description: "Project ID (slugified project name)" },
           prs: {
             type: "array",
             description: "Array of PR objects (max 5). Each has title, description, branch, files.",
@@ -395,51 +441,65 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
             },
           },
         },
-        required: ["prs"],
+        required: ["projectId", "prs"],
       },
     },
     {
       name: "quinn_reviews",
       description:
-        "Get all review decisions from the user. " +
+        "Get all review decisions from the user for a project. " +
         "Returns a map of file IDs (format: {prIndex}-{fileIndex}) to objects with verdict ('approved' or 'rejected') and comment (string or null). " +
         "Call this after the user has reviewed the PR in their browser. " +
         "Only apply changes that the user approved. Skip rejected files.",
-      inputSchema: { type: "object", properties: {}, required: [] },
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: { type: "string", description: "Project ID (slugified project name)" },
+        },
+        required: ["projectId"],
+      },
     },
     {
       name: "quinn_clear",
       description:
-        "Delete all PRs from the review server. " +
+        "Delete all PRs and reviews from a project. " +
         "Call this before sending new PRs for a fresh review session.",
-      inputSchema: { type: "object", properties: {}, required: [] },
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectId: { type: "string", description: "Project ID (slugified project name)" },
+        },
+        required: ["projectId"],
+      },
     },
     {
       name: "quinn_delete_pr",
       description:
-        "Delete a single PR by index. " +
+        "Delete a single PR by index from a project. " +
         "Use this when a PR was sent by mistake (duplicate, wrong file, bad idea). " +
         "This removes the PR and shifts all subsequent PR indices down by one.",
       inputSchema: {
         type: "object",
         properties: {
+          projectId: { type: "string", description: "Project ID (slugified project name)" },
           prIndex: { type: "number", description: "Index of the PR to delete" },
         },
-        required: ["prIndex"],
+        required: ["projectId", "prIndex"],
       },
     },
     {
       name: "quinn_get_pr",
       description:
-        "Get full content of a single PR by index. " +
+        "Get full content of a single PR by index from a project. " +
         "Returns title, description, branch, label, and all files with their diffs and explanations. " +
         "Use this to verify what is stored on the server before updating or completing a PR.",
       inputSchema: {
         type: "object",
         properties: {
+          projectId: { type: "string", description: "Project ID (slugified project name)" },
           prIndex: { type: "number", description: "Index of the PR to retrieve" },
         },
-        required: ["prIndex"],
+        required: ["projectId", "prIndex"],
       },
     },
   ],
@@ -455,10 +515,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
+      case "quinn_create_project": {
+        const result = await apiPost("/api/project", { name: args?.name, theme: args?.theme });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "quinn_list_projects": {
+        const result = await apiGet("/api/projects");
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
       case "quinn_list_prs": {
+        const projectId = args?.projectId;
         const [prsResult, reviewsResult] = await Promise.all([
-          apiGet("/api/prs"),
-          apiGet("/api/reviews"),
+          apiGet(`/api/project/${projectId}/prs`),
+          apiGet(`/api/project/${projectId}/reviews`),
         ]);
         const prs = prsResult as Array<{ title: string; description: string; branch: string; label?: string; files: Array<{ path: string }>; completed?: boolean }>;
         const reviews = reviewsResult as Record<string, { verdict: string; comment: string | null }>;
@@ -467,39 +538,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "quinn_send_pr": {
-        const result = await apiPost("/api/pr", args);
+        const { projectId, ...prBody } = args ?? {};
+        const result = await apiPost(`/api/project/${projectId}/pr`, prBody);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       case "quinn_update_pr": {
-        const prIndex = args?.prIndex;
-        const { prIndex: _, ...prBody } = args ?? {};
-        const result = await apiPut(`/api/pr/${prIndex}`, prBody);
+        const { projectId, prIndex, ...prBody } = args ?? {};
+        const result = await apiPut(`/api/project/${projectId}/pr/${prIndex}`, prBody);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       case "quinn_send_batch": {
-        const result = await apiPost("/api/prs/batch", args?.prs ?? []);
+        const projectId = args?.projectId;
+        const result = await apiPost(`/api/project/${projectId}/prs/batch`, args?.prs ?? []);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       case "quinn_reviews": {
-        const result = await apiGet("/api/reviews");
+        const result = await apiGet(`/api/project/${args?.projectId}/reviews`);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       case "quinn_clear": {
-        const result = await apiDelete("/api/prs");
+        const result = await apiDelete(`/api/project/${args?.projectId}/prs`);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       case "quinn_delete_pr": {
-        const result = await apiDelete(`/api/pr/${args?.prIndex}`);
+        const result = await apiDelete(`/api/project/${args?.projectId}/pr/${args?.prIndex}`);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       case "quinn_get_pr": {
-        const result = await apiGet(`/api/pr/${args?.prIndex}`);
+        const result = await apiGet(`/api/project/${args?.projectId}/pr/${args?.prIndex}`);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
