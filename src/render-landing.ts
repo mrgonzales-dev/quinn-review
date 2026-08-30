@@ -19,8 +19,8 @@ export function renderLanding(): string {
             <span class="landing-step-num">2</span>
             <div class="landing-step-content">
               <div class="landing-step-title">Connect your AI agent</div>
-              <div class="landing-step-desc">Add Quinn as an MCP server in your agent config. The agent uses these tools to send proposed changes for your review.</div>
-              <div class="landing-code" onclick="copyLandingCode(this)">bun run src/mcp-server.ts<span class="copy-hint">click to copy</span></div>
+              <div class="landing-step-desc">Start Quinn with one command. The review server and MCP server both start together. Add Quinn as an MCP server in your agent config.</div>
+              <div class="landing-code" onclick="copyLandingCode(this)">bun run server.ts<span class="copy-hint">click to copy</span></div>
             </div>
           </div>
 
