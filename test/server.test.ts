@@ -395,4 +395,184 @@ describe("server endpoints", () => {
       expect(result).not.toBeNull();
     });
   });
+
+  describe("DELETE /api/prs — clears reviews and comments (stale verdict fix)", () => {
+    it("clears reviews map when all PRs are deleted", async () => {
+      // Add a PR and review it
+      const addResult = await postJSON("/api/pr", makePR({ title: "Clear Reviews PR" })) as { index: number };
+      const idx = addResult.index;
+
+      await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "approved",
+        comment: "stale verdict",
+      });
+
+      // Verify review exists
+      const reviewsBefore = await getJSON("/api/reviews") as Record<string, string>;
+      expect(reviewsBefore[`${idx}-0`]).toBe("approved");
+
+      // Delete all PRs
+      await deleteJSON("/api/prs");
+
+      // Reviews map must be empty
+      const reviewsAfter = await getJSON("/api/reviews") as Record<string, string>;
+      expect(Object.keys(reviewsAfter).length).toBe(0);
+    });
+
+    it("clears comments map when all PRs are deleted", async () => {
+      // Add a PR and review it with a comment
+      const addResult = await postJSON("/api/pr", makePR({ title: "Clear Comments PR" })) as { index: number };
+      const idx = addResult.index;
+
+      await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "approved",
+        comment: "will be cleared",
+      });
+
+      // Verify comment exists
+      const commentsBefore = await getJSON("/api/comments") as Record<string, string | null>;
+      expect(commentsBefore[`${idx}-0`]).toBe("will be cleared");
+
+      // Delete all PRs
+      await deleteJSON("/api/prs");
+
+      // Comments map must be empty
+      const commentsAfter = await getJSON("/api/comments") as Record<string, string | null>;
+      expect(Object.keys(commentsAfter).length).toBe(0);
+    });
+
+    it("new PRs after clear do not inherit stale verdicts", async () => {
+      // Add PRs at indices 0, 1, 2 and review them
+      for (let i = 0; i < 3; i++) {
+        const addResult = await postJSON("/api/pr", makePR({ title: `Stale PR ${i}` })) as { index: number };
+        await postJSON("/api/review", {
+          idSuffix: `${addResult.index}-0`,
+          action: "approved",
+        });
+      }
+
+      // Clear everything
+      await deleteJSON("/api/prs");
+
+      // Add new PRs — they should not have any reviews
+      for (let i = 0; i < 3; i++) {
+        await postJSON("/api/pr", makePR({ title: `Fresh PR ${i}` }));
+      }
+
+      const reviews = await getJSON("/api/reviews") as Record<string, string>;
+      expect(Object.keys(reviews).length).toBe(0);
+    });
+  });
+
+  describe("DELETE /api/pr/:index — rekeys reviews and comments", () => {
+    it("removes reviews for deleted PR", async () => {
+      // Start with clean state
+      await deleteJSON("/api/prs");
+
+      // Add 3 PRs and review all of them
+      const indices: number[] = [];
+      for (let i = 0; i < 3; i++) {
+        const addResult = await postJSON("/api/pr", makePR({ title: `Rekey PR ${i}` })) as { index: number };
+        indices.push(addResult.index);
+        await postJSON("/api/review", {
+          idSuffix: `${addResult.index}-0`,
+          action: "approved",
+          comment: `comment for PR ${i}`,
+        });
+      }
+
+      // Delete the middle PR (index 1)
+      const deleteIdx = indices[1];
+      await deleteJSON(`/api/pr/${deleteIdx}`);
+
+      // Only 2 reviews should remain (PR 0 and shifted PR 2→1)
+      const reviews = await getJSON("/api/reviews") as Record<string, string>;
+      expect(Object.keys(reviews).length).toBe(2);
+      // PR 0 review unchanged
+      expect(reviews["0-0"]).toBe("approved");
+      // Old key "2-0" must be gone (rekeyed to "1-0")
+      expect(reviews["2-0"]).toBeUndefined();
+    });
+
+    it("rekeys reviews for PRs after deleted index", async () => {
+      // Start with clean state
+      await deleteJSON("/api/prs");
+
+      // Add 3 PRs and review all of them
+      const indices: number[] = [];
+      for (let i = 0; i < 3; i++) {
+        const addResult = await postJSON("/api/pr", makePR({ title: `Rekey Shift PR ${i}` })) as { index: number };
+        indices.push(addResult.index);
+        await postJSON("/api/review", {
+          idSuffix: `${addResult.index}-0`,
+          action: "approved",
+        });
+      }
+
+      // Delete PR at index 0 — indices 1 and 2 should shift to 0 and 1
+      await deleteJSON(`/api/pr/${indices[0]}`);
+
+      const reviews = await getJSON("/api/reviews") as Record<string, string>;
+      // Original index 1 (now 0) should still have its review
+      expect(reviews["0-0"]).toBe("approved");
+      // Original index 2 (now 1) should still have its review
+      expect(reviews["1-0"]).toBe("approved");
+      // Old key "2-0" must not exist
+      expect(reviews["2-0"]).toBeUndefined();
+    });
+
+    it("rekeys comments for PRs after deleted index", async () => {
+      // Start with clean state
+      await deleteJSON("/api/prs");
+
+      // Add 3 PRs and review all with comments
+      const indices: number[] = [];
+      for (let i = 0; i < 3; i++) {
+        const addResult = await postJSON("/api/pr", makePR({ title: `Rekey Comments PR ${i}` })) as { index: number };
+        indices.push(addResult.index);
+        await postJSON("/api/review", {
+          idSuffix: `${addResult.index}-0`,
+          action: "approved",
+          comment: `comment ${i}`,
+        });
+      }
+
+      // Delete PR at index 0
+      await deleteJSON(`/api/pr/${indices[0]}`);
+
+      const comments = await getJSON("/api/comments") as Record<string, string | null>;
+      // Original index 1 (now 0) should have its comment
+      expect(comments["0-0"]).toBe("comment 1");
+      // Original index 2 (now 1) should have its comment
+      expect(comments["1-0"]).toBe("comment 2");
+      // Old key "2-0" must not exist
+      expect(comments["2-0"]).toBeUndefined();
+    });
+
+    it("preserves reviews for PRs before deleted index", async () => {
+      // Start with clean state
+      await deleteJSON("/api/prs");
+
+      // Add 3 PRs and review all
+      const indices: number[] = [];
+      for (let i = 0; i < 3; i++) {
+        const addResult = await postJSON("/api/pr", makePR({ title: `Preserve PR ${i}` })) as { index: number };
+        indices.push(addResult.index);
+        await postJSON("/api/review", {
+          idSuffix: `${addResult.index}-0`,
+          action: "rejected",
+        });
+      }
+
+      // Delete the last PR (index 2)
+      await deleteJSON(`/api/pr/${indices[2]}`);
+
+      const reviews = await getJSON("/api/reviews") as Record<string, string>;
+      // PRs 0 and 1 should keep their reviews unchanged
+      expect(reviews["0-0"]).toBe("rejected");
+      expect(reviews["1-0"]).toBe("rejected");
+    });
+  });
 });

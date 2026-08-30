@@ -94,7 +94,6 @@ Quinn lets you send proposed code changes to a human reviewer. The reviewer sees
 7. If the user requested changes to a PR, call quinn_update_pr with the updated content. This clears old reviews and puts the PR back up for review.
 8. If a PR was sent by mistake, call quinn_delete_pr to remove it.
 9. Apply only the approved changes. Skip rejected files.
-10. Call quinn_complete to mark the PR as done.
 
 ## How to format diffs
 
@@ -413,19 +412,6 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
       inputSchema: { type: "object", properties: {}, required: [] },
     },
     {
-      name: "quinn_complete",
-      description:
-        "Mark a PR as completed (done reviewing). " +
-        "Call this after you have applied the approved changes and the review is finished.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          prIndex: { type: "number", description: "Index of the PR to mark complete" },
-        },
-        required: ["prIndex"],
-      },
-    },
-    {
       name: "quinn_delete_pr",
       description:
         "Delete a single PR by index. " +
@@ -503,11 +489,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "quinn_clear": {
         const result = await apiDelete("/api/prs");
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-
-      case "quinn_complete": {
-        const result = await apiPost("/api/complete", args);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 

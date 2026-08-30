@@ -214,9 +214,11 @@ export function main() {
         }
       }
 
-      // DELETE all PRs
+      // DELETE all PRs (also clears reviews and comments)
       if (path === "/api/prs" && req.method === "DELETE") {
         savePRData([]);
+        saveReviews({});
+        saveComments({});
         return json({ ok: true });
       }
 
@@ -265,7 +267,7 @@ export function main() {
         return json(data[index]);
       }
 
-      // DELETE a single PR by index
+      // DELETE a single PR by index (also removes and rekeys reviews/comments)
       if (prGetMatch && req.method === "DELETE") {
         const index = parseInt(prGetMatch[1], 10);
         const data = loadPRData();
@@ -274,6 +276,38 @@ export function main() {
         }
         data.splice(index, 1);
         savePRData(data);
+        // Remove reviews for deleted PR, rekey higher indices down by one
+        const reviews = loadReviews();
+        const rekeyedReviews: Record<string, string> = {};
+        for (const [key, val] of Object.entries(reviews)) {
+          const m = key.match(/^(\d+)-(\d+)$/);
+          if (!m) continue;
+          const prIdx = parseInt(m[1], 10);
+          const fileIdx = parseInt(m[2], 10);
+          if (prIdx === index) continue; // deleted PR
+          if (prIdx > index) {
+            rekeyedReviews[`${prIdx - 1}-${fileIdx}`] = val;
+          } else {
+            rekeyedReviews[key] = val;
+          }
+        }
+        saveReviews(rekeyedReviews);
+        // Same for comments
+        const comments = loadComments();
+        const rekeyedComments: Record<string, string | null> = {};
+        for (const [key, val] of Object.entries(comments)) {
+          const m = key.match(/^(\d+)-(\d+)$/);
+          if (!m) continue;
+          const prIdx = parseInt(m[1], 10);
+          const fileIdx = parseInt(m[2], 10);
+          if (prIdx === index) continue; // deleted PR
+          if (prIdx > index) {
+            rekeyedComments[`${prIdx - 1}-${fileIdx}`] = val;
+          } else {
+            rekeyedComments[key] = val;
+          }
+        }
+        saveComments(rekeyedComments);
         return json({ ok: true, total: data.length });
       }
 
