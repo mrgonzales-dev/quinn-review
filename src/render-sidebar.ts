@@ -1,0 +1,37 @@
+import type { PRData } from "./types.ts";
+import { escapeHtml } from "./escape.ts";
+
+export function renderSidebar(prs: PRData[]): string {
+  const items = prs
+    .map((pr, index) => {
+      const totalAdditions = pr.files.reduce((sum, f) => sum + f.additions, 0);
+      const totalDeletions = pr.files.reduce((sum, f) => sum + f.deletions, 0);
+      const fileCount = pr.files.length;
+      const fileLabel = fileCount === 1 ? "file" : "files";
+
+      return `      <li class="pr-item ${index === 0 ? "active" : ""}${pr.completed ? " completed" : ""}" id="pr-item-${index}" onclick="selectPR(${index})">
+        <div class="pr-item-title">${escapeHtml(pr.title)}</div>
+        <div class="pr-item-branch">${escapeHtml(pr.branch)}</div>
+        <div class="pr-item-meta">
+          <span class="stat-additions">+${totalAdditions}</span>
+          <span class="stat-deletions">-${totalDeletions}</span>
+          <span>${fileCount} ${fileLabel}</span>
+          ${pr.completed ? '<span class="pr-item-badge-completed">Done</span>' : ''}
+        </div>
+      </li>`;
+    })
+    .join("\n");
+
+  return `    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <img src="/quinn-logo.png" alt="Quinn" class="sidebar-logo" />
+          <h1>Quinn</h1>
+        </div>
+        <p>${prs.length} pull request${prs.length === 1 ? "" : "s"} for review</p>
+      </div>
+      <ul class="pr-list">
+${items}
+      </ul>
+    </div>`;
+}

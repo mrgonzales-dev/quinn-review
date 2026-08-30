@@ -1,0 +1,19 @@
+# Runtime data
+pr-data.json
+reviews.json
+
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+
+# Demo / test applications
+basic-todo-application/
+
+# OS files
+.DS_Store
+Thumbs.db

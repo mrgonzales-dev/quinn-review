@@ -1,0 +1,12 @@
+{
+  "name": "quinn",
+  "version": "1.0.0",
+  "description": "Quinn — AI code review skill that renders proposed changes as GitHub-style pull request pages",
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun run server.ts"
+  },
+  "keywords": ["code-review", "pull-request", "ai-skill", "diff-viewer"],
+  "license": "MIT"
+}

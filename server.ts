@@ -1,0 +1,311 @@
+#!/usr/bin/env bun
+/**
+ * server.ts — Quinn review server.
+ * Serves the PR review page and provides API endpoints for PR management
+ * and review decisions.
+ *
+ * Usage: bun run server.ts [path-to-pr-data.json]
+ * Default: ./pr-data.json
+ */
+
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import type { PRData, PRFile, DiffLine } from "./src/types.ts";
+import { renderPage } from "./src/render-page.ts";
+
+const inputPath = resolve(process.argv[2] ?? "./pr-data.json");
+const reviewsPath = resolve(dirname(inputPath), "reviews.json");
+const PORT = 2400;
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
+
+function loadPRData(): PRData[] {
+  if (!existsSync(inputPath)) return [];
+  try {
+    const raw = readFileSync(inputPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return [];
+  }
+}
+
+function savePRData(data: PRData[]): void {
+  writeFileSync(inputPath, JSON.stringify(data, null, 2), "utf-8");
+}
+
+function loadReviews(): Record<string, string> {
+  if (!existsSync(reviewsPath)) return {};
+  try {
+    return JSON.parse(readFileSync(reviewsPath, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveReviews(reviews: Record<string, string>): void {
+  writeFileSync(reviewsPath, JSON.stringify(reviews, null, 2), "utf-8");
+}
+
+function validateDiffLine(line: unknown): string | null {
+  if (typeof line !== "object" || line === null) return "Diff line must be an object";
+  const l = line as Record<string, unknown>;
+  if (l.type !== "context" && l.type !== "added" && l.type !== "removed") {
+    return "Diff line type must be 'context', 'added', or 'removed'";
+  }
+  if (l.oldNumber !== null && typeof l.oldNumber !== "number") {
+    return "Diff line oldNumber must be a number or null";
+  }
+  if (l.newNumber !== null && typeof l.newNumber !== "number") {
+    return "Diff line newNumber must be a number or null";
+  }
+  if (typeof l.content !== "string") {
+    return "Diff line content must be a string";
+  }
+  if (l.type === "added" && l.oldNumber !== null) {
+    return "Diff line oldNumber must be null for added lines";
+  }
+  if (l.type === "removed" && l.newNumber !== null) {
+    return "Diff line newNumber must be null for removed lines";
+  }
+  return null;
+}
+
+function validateFile(file: unknown): string | null {
+  if (typeof file !== "object" || file === null) return "File must be an object";
+  const f = file as Record<string, unknown>;
+  if (typeof f.path !== "string" || !f.path) return "File path must be a non-empty string";
+  if (f.status !== "added" && f.status !== "modified" && f.status !== "deleted") {
+    return "File status must be 'added', 'modified', or 'deleted'";
+  }
+  if (typeof f.additions !== "number" || f.additions < 0) {
+    return "File additions must be a non-negative number";
+  }
+  if (typeof f.deletions !== "number" || f.deletions < 0) {
+    return "File deletions must be a non-negative number";
+  }
+  if (!Array.isArray(f.diff) || f.diff.length === 0) {
+    return "File diff must be a non-empty array";
+  }
+  for (let i = 0; i < f.diff.length; i++) {
+    const err = validateDiffLine(f.diff[i]);
+    if (err) return `Diff line ${i}: ${err}`;
+  }
+  if (typeof f.explanation !== "string" || !f.explanation) {
+    return "File explanation must be a non-empty string";
+  }
+  const addedCount = (f.diff as DiffLine[]).filter(d => d.type === "added").length;
+  const removedCount = (f.diff as DiffLine[]).filter(d => d.type === "removed").length;
+  if (addedCount !== f.additions) {
+    return `File additions (${f.additions}) does not match actual added lines (${addedCount})`;
+  }
+  if (removedCount !== f.deletions) {
+    return `File deletions (${f.deletions}) does not match actual removed lines (${removedCount})`;
+  }
+  return null;
+}
+
+function validatePR(pr: unknown): string | null {
+  if (typeof pr !== "object" || pr === null) return "PR must be an object";
+  const p = pr as Record<string, unknown>;
+  if (typeof p.title !== "string" || !p.title) return "PR title must be a non-empty string";
+  if (typeof p.description !== "string" || !p.description) {
+    return "PR description must be a non-empty string";
+  }
+  if (typeof p.branch !== "string" || !p.branch) return "PR branch must be a non-empty string";
+  if (!Array.isArray(p.files) || p.files.length === 0) {
+    return "PR files must be a non-empty array";
+  }
+  for (let i = 0; i < p.files.length; i++) {
+    const err = validateFile(p.files[i]);
+    if (err) return `File ${i} (${(p.files[i] as PRFile)?.path ?? "unknown"}): ${err}`;
+  }
+  const paths = p.files.map((f: unknown) => (f as PRFile).path);
+  const seen = new Set<string>();
+  for (const path of paths) {
+    if (seen.has(path)) return `Duplicate file path: ${path}`;
+    seen.add(path);
+  }
+  return null;
+}
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function main() {
+  const server = Bun.serve({
+    port: PORT,
+    async fetch(req) {
+      const url = new URL(req.url);
+      const path = url.pathname;
+
+      // Serve the review page
+      if (path === "/" || path === "/index.html") {
+        const data = loadPRData();
+        const html = renderPage(data);
+        return new Response(html, {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      }
+
+      // Health check
+      if (path === "/api/health" && req.method === "GET") {
+        const data = loadPRData();
+        const reviews = loadReviews();
+        const completed = data.filter(d => d.completed).length;
+        return json({ ok: true, prs: data.length, reviews: Object.keys(reviews).length, completed });
+      }
+
+      // GET all PRs
+      if (path === "/api/prs" && req.method === "GET") {
+        return json(loadPRData());
+      }
+
+      // POST a new PR (validate + append)
+      if (path === "/api/pr" && req.method === "POST") {
+        const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
+        if (contentLength > MAX_BODY_SIZE) {
+          return json({ error: "Request body too large (max 10 MB)" }, 413);
+        }
+        try {
+          const body = await req.json();
+          const err = validatePR(body);
+          if (err) return json({ error: err }, 400);
+          const data = loadPRData();
+          data.push(body as PRData);
+          savePRData(data);
+          return json({ ok: true, index: data.length - 1, total: data.length });
+        } catch {
+          return json({ error: "Bad request body" }, 400);
+        }
+      }
+
+      // DELETE all PRs
+      if (path === "/api/prs" && req.method === "DELETE") {
+        savePRData([]);
+        return json({ ok: true });
+      }
+
+      // GET a single PR by index
+      const prGetMatch = path.match(/^\/api\/pr\/(\d+)$/);
+      if (prGetMatch && req.method === "GET") {
+        const index = parseInt(prGetMatch[1], 10);
+        const data = loadPRData();
+        if (index < 0 || index >= data.length) {
+          return json({ error: "PR index out of range" }, 400);
+        }
+        return json(data[index]);
+      }
+
+      // DELETE a single PR by index
+      if (prGetMatch && req.method === "DELETE") {
+        const index = parseInt(prGetMatch[1], 10);
+        const data = loadPRData();
+        if (index < 0 || index >= data.length) {
+          return json({ error: "PR index out of range" }, 400);
+        }
+        data.splice(index, 1);
+        savePRData(data);
+        return json({ ok: true, total: data.length });
+      }
+
+      // GET all reviews
+      if (path === "/api/reviews" && req.method === "GET") {
+        return json(loadReviews());
+      }
+
+      // POST a review decision
+      if (path === "/api/review" && req.method === "POST") {
+        try {
+          const body = await req.json();
+          const { idSuffix, action } = body;
+          if (!idSuffix || (action !== "approved" && action !== "rejected")) {
+            return json({ error: "Invalid request. Need idSuffix and action ('approved' or 'rejected')" }, 400);
+          }
+          if (!/^\d+-\d+$/.test(idSuffix)) {
+            return json({ error: "idSuffix must match format {prIndex}-{fileIndex}" }, 400);
+          }
+          const reviews = loadReviews();
+          reviews[idSuffix] = action;
+          saveReviews(reviews);
+          return json({ ok: true });
+        } catch {
+          return json({ error: "Bad request body" }, 400);
+        }
+      }
+
+      // DELETE a single review by idSuffix
+      const reviewDelMatch = path.match(/^\/api\/review\/(\d+-\d+)$/);
+      if (reviewDelMatch && req.method === "DELETE") {
+        const idSuffix = reviewDelMatch[1];
+        const reviews = loadReviews();
+        if (!(idSuffix in reviews)) {
+          return json({ error: "Review not found" }, 404);
+        }
+        delete reviews[idSuffix];
+        saveReviews(reviews);
+        return json({ ok: true });
+      }
+
+      // POST complete a PR (mark as done)
+      if (path === "/api/complete" && req.method === "POST") {
+        try {
+          const body = await req.json();
+          const { prIndex } = body;
+          if (typeof prIndex !== "number" || prIndex < 0) {
+            return json({ error: "Invalid request. Need prIndex (non-negative number)" }, 400);
+          }
+          const data = loadPRData();
+          if (prIndex >= data.length) {
+            return json({ error: "PR index out of range" }, 400);
+          }
+          data[prIndex].completed = true;
+          savePRData(data);
+          return json({ ok: true, prIndex });
+        } catch {
+          return json({ error: "Bad request body" }, 400);
+        }
+      }
+
+      // DELETE complete status from a PR (unmark)
+      const completeDelMatch = path.match(/^\/api\/complete\/(\d+)$/);
+      if (completeDelMatch && req.method === "DELETE") {
+        const prIndex = parseInt(completeDelMatch[1], 10);
+        const data = loadPRData();
+        if (prIndex < 0 || prIndex >= data.length) {
+          return json({ error: "PR index out of range" }, 400);
+        }
+        data[prIndex].completed = false;
+        savePRData(data);
+        return json({ ok: true, prIndex });
+      }
+
+      // Serve the Quinn logo
+      if (path === "/quinn-logo.png") {
+        try {
+          const logoPath = resolve(dirname(new URL(import.meta.url).pathname), "src/quinn-logo.png");
+          const file = readFileSync(logoPath);
+          return new Response(file, {
+            headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" },
+          });
+        } catch {
+          return new Response("Logo not found", { status: 404 });
+        }
+      }
+
+      return new Response("Not found", { status: 404 });
+    },
+  });
+
+  const data = loadPRData();
+  console.log("\n  Quinn — review server running\n");
+  console.log(`  PRs: ${data.length}`);
+  console.log(`  URL: http://localhost:${server.port}`);
+  console.log(`  Data: ${inputPath}`);
+  console.log(`  Reviews: ${reviewsPath}\n`);
+}
+
+main();
