@@ -10,7 +10,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import type { PRData, PRFile, DiffLine } from "./src/types.ts";
 import { renderPage } from "./src/render-page.ts";
 
@@ -338,6 +338,15 @@ function main() {
   console.log(`  URL: http://localhost:${server.port}`);
   console.log(`  Data: ${inputPath}`);
   console.log(`  Reviews: ${reviewsPath}\n`);
+
+  const mcpPath = resolve(import.meta.dir, "src/mcp-server.ts");
+  const mcp = spawn("bun", ["run", mcpPath], {
+    stdio: ["pipe", "pipe", "inherit"],
+  });
+  mcp.on("exit", (code) => {
+    console.log(`  MCP server exited (code ${code})`);
+  });
+  console.log(`  MCP: bun run ${mcpPath}\n`);
 }
 
 main();
