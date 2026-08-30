@@ -89,11 +89,53 @@ export function validateFile(file: unknown, projectPath?: string): string | null
   }
 
   const hasContent = typeof f.content === "string";
-  if (!hasContent) {
-    return "File must have a 'content' string";
+  const hasEdits = Array.isArray(f.edits);
+
+  if (!hasContent && !hasEdits) {
+    return "File must have a 'content' string or an 'edits' array";
+  }
+  if (hasContent && hasEdits) {
+    return "File must have 'content' or 'edits', not both";
   }
 
-  const content = f.content as string;
+  // Build the new content string
+  let content: string;
+
+  if (hasEdits) {
+    // edits-based: read old content from disk, apply each search/replace
+    if (f.status === "added") {
+      return "Cannot use 'edits' with status 'added' — use 'content' instead";
+    }
+    if (f.status === "deleted") {
+      return "Cannot use 'edits' with status 'deleted' — use 'content' instead";
+    }
+
+    const oldContent = readOldFile(projectPath, f.path);
+    if (!oldContent) {
+      return `Cannot apply edits to '${f.path}': file does not exist in project directory`;
+    }
+
+    content = oldContent;
+    for (let i = 0; i < f.edits!.length; i++) {
+      const edit = f.edits![i] as { search: unknown; replace: unknown };
+      if (typeof edit.search !== "string" || typeof edit.replace !== "string") {
+        return `Edit ${i}: 'search' and 'replace' must be strings`;
+      }
+      const occurrences = content.split(edit.search).length - 1;
+      if (occurrences === 0) {
+        return `Edit ${i}: search string not found in '${f.path}'`;
+      }
+      if (occurrences > 1) {
+        return `Edit ${i}: search string found ${occurrences} times in '${f.path}' — must be unique`;
+      }
+      content = content.replace(edit.search, edit.replace);
+    }
+
+    // Store the computed content so the client can see it
+    f.content = content;
+  } else {
+    content = f.content as string;
+  }
 
   if (f.status === "added") {
     f.diff = computeAddedDiff(content);

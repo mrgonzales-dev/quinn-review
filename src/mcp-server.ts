@@ -270,7 +270,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           label: { type: "string", description: "Short label for the PR (e.g. 'bugfix', 'feature', 'refactor'). Shown as a badge in the sidebar so the user can identify PRs easily." },
           files: {
             type: "array",
-            description: "List of files in the PR. Each file needs 'content' (full new file text) and an explanation.",
+            description: "List of files in the PR. Each file needs either 'content' (full new file text) or 'edits' (search/replace pairs), plus an explanation.",
             items: {
               type: "object",
               properties: {
@@ -280,8 +280,24 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                   type: "string",
                   description:
                     "Full new file content as a string. Quinn reads the existing file from disk " +
-                    "and computes the diff automatically. Required for 'added' and 'modified' files. " +
+                    "and computes the diff automatically. Use for 'added' files or full rewrites. " +
                     "For 'deleted' files, Quinn reads the file from disk to show what is being removed.",
+                },
+                edits: {
+                  type: "array",
+                  description:
+                    "Search/replace pairs for 'modified' files. Quinn reads the existing file from disk, " +
+                    "applies each edit in order, then computes the diff. Each edit has 'search' (exact string to find, must be unique) " +
+                    "and 'replace' (string to replace it with). Use this when you only need to change specific parts of a file — " +
+                    "it saves tokens compared to sending full 'content'.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      search: { type: "string", description: "Exact string to find in the file. Must appear exactly once." },
+                      replace: { type: "string", description: "String to replace the search match with." },
+                    },
+                    required: ["search", "replace"],
+                  },
                 },
                 explanation: {
                   type: "string",
@@ -290,7 +306,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     "Bad: 'Fixed bugs'. Good: 'Added realpathSync to path containment check to prevent symlink traversal (BUG_002)'.",
                 },
               },
-              required: ["path", "status", "content", "explanation"],
+              required: ["path", "status", "explanation"],
             },
           },
         },
@@ -319,7 +335,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Update an existing PR by index. Replaces the PR content (title, description, branch, files). " +
         "Clears all review decisions for that PR and resets completed status, putting it back up for review. " +
         "Use this when the user requested changes to a PR you already submitted. " +
-        "Same format as quinn_send_pr: send 'content' (full new file text) for each file.",
+        "Same format as quinn_send_pr: send 'content' (full new file text) or 'edits' (search/replace pairs) for each file.",
       inputSchema: {
         type: "object",
         properties: {
@@ -331,7 +347,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           label: { type: "string", description: "Short label for the PR (e.g. 'bugfix', 'feature', 'refactor'). Shown as a badge in the sidebar so the user can identify PRs easily." },
           files: {
             type: "array",
-            description: "List of files in the PR. Each file needs 'content' (full new file text) and an explanation.",
+            description: "List of files in the PR. Each file needs either 'content' (full new file text) or 'edits' (search/replace pairs), plus an explanation.",
             items: {
               type: "object",
               properties: {
@@ -343,6 +359,21 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     "Full new file content as a string. Quinn reads the existing file from disk " +
                     "and computes the diff automatically.",
                 },
+                edits: {
+                  type: "array",
+                  description:
+                    "Search/replace pairs for 'modified' files. Quinn reads the existing file from disk, " +
+                    "applies each edit in order, then computes the diff. Each edit has 'search' (exact string, must be unique) " +
+                    "and 'replace' (replacement string).",
+                  items: {
+                    type: "object",
+                    properties: {
+                      search: { type: "string", description: "Exact string to find in the file. Must appear exactly once." },
+                      replace: { type: "string", description: "String to replace the search match with." },
+                    },
+                    required: ["search", "replace"],
+                  },
+                },
                 explanation: {
                   type: "string",
                   description:
@@ -350,7 +381,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     "Bad: 'Fixed bugs'. Good: 'Added realpathSync to path containment check to prevent symlink traversal (BUG_002)'.",
                 },
               },
-              required: ["path", "status", "content", "explanation"],
+              required: ["path", "status", "explanation"],
             },
           },
         },
@@ -364,7 +395,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Each PR follows the same format as quinn_send_pr. " +
         "Use this when you have 2-5 PRs ready to review. " +
         "\n\n" +
-        "Send 'content' (full new file text) for each file. Write specific explanations.",
+        "Send 'content' (full new file text) or 'edits' (search/replace pairs) for each file. Write specific explanations.",
       inputSchema: {
         type: "object",
         properties: {
@@ -391,9 +422,23 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                         type: "string",
                         description: "Full new file content. Quinn reads existing file from disk and computes diff.",
                       },
+                      edits: {
+                        type: "array",
+                        description:
+                          "Search/replace pairs for modified files. Quinn reads the file from disk, " +
+                          "applies each edit in order, then computes the diff. Each edit has 'search' (must be unique) and 'replace'.",
+                        items: {
+                          type: "object",
+                          properties: {
+                            search: { type: "string", description: "Exact string to find. Must appear exactly once." },
+                            replace: { type: "string", description: "String to replace the search match with." },
+                          },
+                          required: ["search", "replace"],
+                        },
+                      },
                       explanation: { type: "string" },
                     },
-                    required: ["path", "status", "content", "explanation"],
+                    required: ["path", "status", "explanation"],
                   },
                 },
               },

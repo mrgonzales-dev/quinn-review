@@ -25,9 +25,13 @@ Quinn supports **multiple projects**. Each project is a separate folder with its
 
 Send one PR object per `quinn_send_pr` call or in the `prs` array of `quinn_send_batch`. The server validates the structure and rejects invalid data with an error message.
 
-### Format — content-based
+### Format — content or edits
 
-Send the full new file content as a string. Quinn reads the existing file from the project's filesystem path (set during `quinn_create_project`) and computes the diff automatically. You do NOT need to send `oldContent` or `diff` arrays.
+Each file uses either `content` (full new file text) or `edits` (search/replace pairs). Send one or the other per file, not both. Quinn reads the existing file from the project's filesystem path (set during `quinn_create_project`) and computes the diff automatically.
+
+#### Content format
+
+Send the full new file content as a string. Use this for `added` files, `deleted` files, or full rewrites of `modified` files.
 
 ```json
 {
@@ -46,8 +50,34 @@ Send the full new file content as a string. Quinn reads the existing file from t
 }
 ```
 
+#### Edits format
+
+Send search/replace pairs for `modified` files. Quinn reads the existing file from disk, applies each edit in order, then computes the diff. Use this when you only change specific parts of a file. It saves tokens.
+
+```json
+{
+  "title": "Short summary of the proposed changes",
+  "description": "Longer explanation of what and why. What does this PR do?",
+  "branch": "ai-proposal/short-branch-name",
+  "label": "bugfix",
+  "files": [
+    {
+      "path": "relative/path/to/file.ext",
+      "status": "modified",
+      "edits": [
+        { "search": "const port = 3000;", "replace": "const port = 2400;" },
+        { "search": "app.listen(port);", "replace": "app.listen(port, () => console.log(`Listening on ${port}`));" }
+      ],
+      "explanation": "Why this change was made. What it does."
+    }
+  ]
+}
+```
+
+Each `search` string must appear exactly once in the file. If it appears zero times or more than once, Quinn returns an error. Fix the search string to be more specific and resend.
+
 For `added` files: send `content` (the new file text). Quinn marks all lines as added.
-For `modified` files: send `content` (new file text). Quinn reads the existing file from disk and computes the diff.
+For `modified` files: send `content` (new file text) or `edits` (search/replace pairs). Quinn reads the existing file from disk and computes the diff.
 For `deleted` files: send `content` (can be empty string). Quinn reads the existing file from disk and marks all lines as removed.
 
 You can send one PR or multiple PRs. Each PR appears as a separate entry in the sidebar.
@@ -61,11 +91,12 @@ You can send one PR or multiple PRs. Each PR appears as a separate entry in the 
 - **files**: Array of file objects. One per file you propose to change.
 - **path**: Relative to the project root (the `path` set in `quinn_create_project`).
 - **status**: `added` for new files, `modified` for changed files, `deleted` for removed files.
-- **content**: Full new file content as a string. Required. Quinn reads the existing file from disk to compute the diff.
+- **content**: Full new file content as a string. Use for `added` files, `deleted` files, or full rewrites.
+- **edits**: Array of `{search, replace}` objects. Use for `modified` files when you only change specific parts. Each `search` must be unique in the file. Only valid with `status: "modified"`.
 - **additions / deletions**: Auto-computed by the server from the diff. Do not send these.
 - **explanation**: One or two sentences. Why you made this specific change to this file.
 
-Each file must have a `content` string. The server computes the diff from the existing file on disk.
+Each file must have either `content` or `edits` (not both). The server computes the diff from the existing file on disk.
 
 ## Starting the review server
 

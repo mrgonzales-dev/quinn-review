@@ -447,6 +447,238 @@ describe("server endpoints", () => {
     });
   });
 
+  // ── Edits-based PR format ─────────────────────────────────────
+
+  describe("edits-based PR format", () => {
+    const PROJ = "edits-test-proj";
+
+    beforeAll(async () => {
+      await postJSON("/api/project", { name: "Edits Test Proj", theme: "green", path: TEST_PROJECT_DIR });
+    });
+
+    it("applies edits to modified file and computes diff from disk", async () => {
+      const filePath = resolve(TEST_PROJECT_DIR, "edits-target.ts");
+      writeFileSync(filePath, "const port = 3000;\nconst host = 'localhost';\n", "utf-8");
+
+      const pr = {
+        title: "Edits Modified",
+        description: "Test edits-based modified file",
+        branch: "test/edits-modified",
+        files: [{
+          path: "edits-target.ts",
+          status: "modified",
+          edits: [
+            { search: "const port = 3000;", replace: "const port = 2400;" },
+          ],
+          explanation: "Change port to 2400",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { ok: boolean; index: number };
+      expect(result.ok).toBe(true);
+
+      const fetched = await getJSON(`/api/project/${PROJ}/pr/${result.index}`) as {
+        files: Array<{ diff: Array<{ type: string; content: string }>; additions: number; deletions: number; content?: string }>;
+      };
+      const addedLines = fetched.files[0].diff.filter(d => d.type === "added");
+      const removedLines = fetched.files[0].diff.filter(d => d.type === "removed");
+      expect(addedLines.map(d => d.content)).toEqual(["const port = 2400;"]);
+      expect(removedLines.map(d => d.content)).toEqual(["const port = 3000;"]);
+    });
+
+    it("applies multiple edits in order", async () => {
+      const filePath = resolve(TEST_PROJECT_DIR, "multi-edit.ts");
+      writeFileSync(filePath, "const a = 1;\nconst b = 2;\nconst c = 3;\n", "utf-8");
+
+      const pr = {
+        title: "Multi Edits",
+        description: "Test multiple edits in one file",
+        branch: "test/multi-edits",
+        files: [{
+          path: "multi-edit.ts",
+          status: "modified",
+          edits: [
+            { search: "const a = 1;", replace: "const a = 10;" },
+            { search: "const c = 3;", replace: "const c = 30;" },
+          ],
+          explanation: "Scale a and c by 10",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { ok: boolean; index: number };
+      expect(result.ok).toBe(true);
+
+      const fetched = await getJSON(`/api/project/${PROJ}/pr/${result.index}`) as {
+        files: Array<{ diff: Array<{ type: string; content: string }> }>;
+      };
+      const addedLines = fetched.files[0].diff.filter(d => d.type === "added");
+      const removedLines = fetched.files[0].diff.filter(d => d.type === "removed");
+      expect(addedLines.map(d => d.content)).toEqual(["const a = 10;", "const c = 30;"]);
+      expect(removedLines.map(d => d.content)).toEqual(["const a = 1;", "const c = 3;"]);
+    });
+
+    it("rejects edits when search string is not found", async () => {
+      const filePath = resolve(TEST_PROJECT_DIR, "no-match.ts");
+      writeFileSync(filePath, "const x = 1;\n", "utf-8");
+
+      const pr = {
+        title: "No Match",
+        description: "Search string not in file",
+        branch: "test/no-match",
+        files: [{
+          path: "no-match.ts",
+          status: "modified",
+          edits: [
+            { search: "const y = 999;", replace: "const y = 1000;" },
+          ],
+          explanation: "Should fail",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("not found");
+    });
+
+    it("rejects edits when search string appears multiple times", async () => {
+      const filePath = resolve(TEST_PROJECT_DIR, "duplicate.ts");
+      writeFileSync(filePath, "const x = 1;\nconst x = 1;\n", "utf-8");
+
+      const pr = {
+        title: "Duplicate Match",
+        description: "Search string appears twice",
+        branch: "test/duplicate-match",
+        files: [{
+          path: "duplicate.ts",
+          status: "modified",
+          edits: [
+            { search: "const x = 1;", replace: "const x = 2;" },
+          ],
+          explanation: "Should fail",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("2 times");
+    });
+
+    it("rejects edits with both content and edits", async () => {
+      const filePath = resolve(TEST_PROJECT_DIR, "both.ts");
+      writeFileSync(filePath, "const x = 1;\n", "utf-8");
+
+      const pr = {
+        title: "Both Content and Edits",
+        description: "Should fail",
+        branch: "test/both",
+        files: [{
+          path: "both.ts",
+          status: "modified",
+          content: "const x = 2;\n",
+          edits: [
+            { search: "const x = 1;", replace: "const x = 2;" },
+          ],
+          explanation: "Should fail",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("not both");
+    });
+
+    it("rejects edits with status added", async () => {
+      const pr = {
+        title: "Edits With Added",
+        description: "Should fail",
+        branch: "test/edits-added",
+        files: [{
+          path: "new-file.ts",
+          status: "added",
+          edits: [
+            { search: "a", "replace": "b" },
+          ],
+          explanation: "Should fail",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("added");
+    });
+
+    it("rejects edits with status deleted", async () => {
+      const filePath = resolve(TEST_PROJECT_DIR, "del-edits.ts");
+      writeFileSync(filePath, "const x = 1;\n", "utf-8");
+
+      const pr = {
+        title: "Edits With Deleted",
+        description: "Should fail",
+        branch: "test/edits-deleted",
+        files: [{
+          path: "del-edits.ts",
+          status: "deleted",
+          edits: [
+            { search: "const x = 1;", replace: "const x = 2;" },
+          ],
+          explanation: "Should fail",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("deleted");
+    });
+
+    it("rejects edits on file that does not exist on disk", async () => {
+      const pr = {
+        title: "Edits No File",
+        description: "File does not exist",
+        branch: "test/edits-no-file",
+        files: [{
+          path: "nonexistent-edits.ts",
+          status: "modified",
+          edits: [
+            { search: "a", replace: "b" },
+          ],
+          explanation: "Should fail",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("does not exist");
+    });
+
+    it("rejects file with neither content nor edits", async () => {
+      const pr = {
+        title: "Neither",
+        description: "Should fail",
+        branch: "test/neither",
+        files: [{
+          path: "some-file.ts",
+          status: "modified",
+          explanation: "Missing content and edits",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("content");
+      expect(result.error).toContain("edits");
+    });
+
+    it("stores computed content from edits in the PR", async () => {
+      const filePath = resolve(TEST_PROJECT_DIR, "stored-content.ts");
+      writeFileSync(filePath, "const x = 1;\n", "utf-8");
+
+      const pr = {
+        title: "Stored Content",
+        description: "Verify content is stored from edits",
+        branch: "test/stored-content",
+        files: [{
+          path: "stored-content.ts",
+          status: "modified",
+          edits: [
+            { search: "const x = 1;", replace: "const x = 42;" },
+          ],
+          explanation: "Change x to 42",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { ok: boolean; index: number };
+      expect(result.ok).toBe(true);
+
+      const fetched = await getJSON(`/api/project/${PROJ}/pr/${result.index}`) as {
+        files: Array<{ content?: string }>;
+      };
+      expect(fetched.files[0].content).toContain("const x = 42;");
+    });
+  });
+
   // ── Diff computation unit tests ────────────────────────────────
 
   describe("diff computation", () => {

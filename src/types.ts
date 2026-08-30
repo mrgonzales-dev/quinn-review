@@ -14,6 +14,8 @@ export interface PRFile {
   explanation: string;
   /** Full new file content. Server computes diff from this. Required for added/modified. */
   content?: string;
+  /** Search/replace edits. Alternative to content for modified files. Server reads old content from disk and applies each edit. */
+  edits?: Array<{ search: string; replace: string }>;
 }
 
 export interface PRData {
