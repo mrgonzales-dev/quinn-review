@@ -133,10 +133,21 @@ ${landing}
       return null;
     }
 
+    function getComment(idSuffix) {
+      var input = document.getElementById("comment-input-" + idSuffix);
+      return input ? input.value : "";
+    }
+
+    function showCommentInput(idSuffix, show) {
+      var el = document.getElementById("comment-" + idSuffix);
+      if (el) el.style.display = show ? "" : "none";
+    }
+
     function reviewFile(idSuffix, action) {
       var currentAction = getBadgeAction(idSuffix);
       if (currentAction === action) {
         applyBadgeState(idSuffix, null);
+        showCommentInput(idSuffix, false);
         fetch("/api/review/" + idSuffix, { method: "DELETE" })
           .catch(function(e) {
             console.error("Failed to delete review:", e);
@@ -144,10 +155,12 @@ ${landing}
           });
       } else {
         applyBadgeState(idSuffix, action);
+        showCommentInput(idSuffix, true);
+        var comment = getComment(idSuffix);
         fetch("/api/review", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idSuffix: idSuffix, action: action })
+          body: JSON.stringify({ idSuffix: idSuffix, action: action, comment: comment })
         }).catch(function(e) {
           console.error("Failed to save review:", e);
           applyBadgeState(idSuffix, currentAction);
@@ -160,10 +173,12 @@ ${landing}
       var currentAction = getBadgeAction(idSuffix);
       if (currentAction === action) return;
       applyBadgeState(idSuffix, action);
+      showCommentInput(idSuffix, true);
+      var comment = getComment(idSuffix);
       fetch("/api/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idSuffix: idSuffix, action: action })
+        body: JSON.stringify({ idSuffix: idSuffix, action: action, comment: comment })
       }).catch(function(e) {
         console.error("Failed to save review:", e);
         applyBadgeState(idSuffix, currentAction);
@@ -253,22 +268,29 @@ ${landing}
     }
 
     (function loadSavedReviews() {
-      fetch("/api/reviews")
-        .then(function(r) { return r.json(); })
-        .then(function(reviews) {
-          var prIndices = {};
-          Object.keys(reviews).forEach(function(idSuffix) {
-            var action = reviews[idSuffix];
-            var badge = document.getElementById("badge-" + idSuffix);
-            if (!badge) return;
-            applyBadgeState(idSuffix, action);
-            prIndices[idSuffix.split("-")[0]] = true;
-          });
-          Object.keys(prIndices).forEach(function(prIndex) {
-            updatePrProgress(prIndex);
-          });
-        })
-        .catch(function(e) { console.error("Failed to load reviews:", e); });
+      Promise.all([
+        fetch("/api/reviews").then(function(r) { return r.json(); }),
+        fetch("/api/comments").then(function(r) { return r.json(); })
+      ]).then(function(results) {
+        var reviews = results[0];
+        var comments = results[1];
+        var prIndices = {};
+        Object.keys(reviews).forEach(function(idSuffix) {
+          var action = reviews[idSuffix];
+          var badge = document.getElementById("badge-" + idSuffix);
+          if (!badge) return;
+          applyBadgeState(idSuffix, action);
+          showCommentInput(idSuffix, true);
+          if (comments[idSuffix]) {
+            var input = document.getElementById("comment-input-" + idSuffix);
+            if (input) input.value = comments[idSuffix];
+          }
+          prIndices[idSuffix.split("-")[0]] = true;
+        });
+        Object.keys(prIndices).forEach(function(prIndex) {
+          updatePrProgress(prIndex);
+        });
+      }).catch(function(e) { console.error("Failed to load reviews:", e); });
     })();
 
     (function checkForUpdates() {

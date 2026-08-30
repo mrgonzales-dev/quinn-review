@@ -274,6 +274,21 @@ export const STYLES = `
   .file-review-badge.approved { background: rgba(59,185,80,0.1); color: #7ee787; }
   .file-review-badge.rejected { background: rgba(248,81,73,0.1); color: #ff8182; }
 
+  /* Comment input */
+  .file-comment {
+    padding: 8px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg-tertiary);
+  }
+  .comment-input {
+    width: 100%; padding: 6px 10px; font-size: 13px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+    font-family: inherit; outline: none;
+    transition: border-color 0.15s;
+  }
+  .comment-input:focus { border-color: var(--accent); }
+  .comment-input::placeholder { color: var(--text-muted); }
+
   /* Update badge */
   .update-badge {
     display: flex; align-items: center; gap: 8px; margin-top: 12px;

@@ -47,13 +47,14 @@ async function apiPut(path: string, body: unknown): Promise<unknown> {
 export function mergePrsWithReviews(
   prs: Array<{ title: string; description: string; branch: string; label?: string; files: Array<{ path: string }>; completed?: boolean }>,
   reviews: Record<string, string>,
+  comments: Record<string, string | null> = {},
 ): Array<{
   index: number;
   label: string | null;
   title: string;
   branch: string;
   completed: boolean;
-  files: Array<{ path: string; verdict: string }>;
+  files: Array<{ path: string; verdict: string; comment: string | null }>;
 }> {
   return prs.map((pr, i) => ({
     index: i,
@@ -61,10 +62,15 @@ export function mergePrsWithReviews(
     title: pr.title,
     branch: pr.branch,
     completed: pr.completed ?? false,
-    files: pr.files.map((file, fi) => ({
-      path: file.path,
-      verdict: reviews[`${i}-${fi}`] ?? "pending",
-    })),
+    files: pr.files.map((file, fi) => {
+      const key = `${i}-${fi}`;
+      const verdict = reviews[key] ?? "pending";
+      return {
+        path: file.path,
+        verdict,
+        comment: verdict === "pending" ? null : (comments[key] ?? null),
+      };
+    }),
   }));
 }
 
@@ -270,9 +276,9 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
     {
       name: "quinn_list_prs",
       description:
-        "List all PRs on the review server with per-file review verdicts. " +
+        "List all PRs on the review server with per-file review verdicts and comments. " +
         "Returns an array of PRs with their index, label, title, branch, completed status, and files. " +
-        "Each file shows its path and verdict: 'approved', 'rejected', or 'pending'. " +
+        "Each file shows its path, verdict ('approved', 'rejected', or 'pending'), and comment (null if none). " +
         "Use this to see the full review state in one call. " +
         "Call quinn_get_pr to see full diff content of a specific PR.",
       inputSchema: { type: "object", properties: {}, required: [] },
@@ -461,13 +467,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "quinn_list_prs": {
-        const [prsResult, reviewsResult] = await Promise.all([
+        const [prsResult, reviewsResult, commentsResult] = await Promise.all([
           apiGet("/api/prs"),
           apiGet("/api/reviews"),
+          apiGet("/api/comments"),
         ]);
         const prs = prsResult as Array<{ title: string; description: string; branch: string; label?: string; files: Array<{ path: string }>; completed?: boolean }>;
         const reviews = reviewsResult as Record<string, string>;
-        const summary = mergePrsWithReviews(prs, reviews);
+        const comments = commentsResult as Record<string, string | null>;
+        const summary = mergePrsWithReviews(prs, reviews, comments);
         return { content: [{ type: "text", text: JSON.stringify(summary, null, 2) }] };
       }
 

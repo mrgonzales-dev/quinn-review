@@ -29,6 +29,13 @@ export function renderFile(file: PRFile, fileIndex: number, prIndex: number): st
           </div>
         </div>
         <div class="file-review-badge" id="badge-${idSuffix}"></div>
+        <div class="file-comment" id="comment-${idSuffix}" style="display:none;">
+          <input type="text" class="comment-input" id="comment-input-${idSuffix}"
+            placeholder="Optional comment (max 500 chars)"
+            maxlength="500"
+            onclick="event.stopPropagation()"
+            onkeydown="event.stopPropagation()" />
+        </div>
         <div class="file-diff" id="diff-${idSuffix}">
           <table class="diff-table">
             <tbody>

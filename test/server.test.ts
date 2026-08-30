@@ -5,11 +5,13 @@ import { resolve, dirname } from "node:path";
 const TEST_PORT = 2499;
 const TEST_DATA = resolve(import.meta.dir, "test-pr-data.json");
 const TEST_REVIEWS = resolve(dirname(TEST_DATA), "reviews.json");
+const TEST_COMMENTS = resolve(dirname(TEST_DATA), "comments.json");
 
 // Clean up test files before and after
 function cleanup(): void {
   if (existsSync(TEST_DATA)) unlinkSync(TEST_DATA);
   if (existsSync(TEST_REVIEWS)) unlinkSync(TEST_REVIEWS);
+  if (existsSync(TEST_COMMENTS)) unlinkSync(TEST_COMMENTS);
 }
 
 const BASE = `http://localhost:${TEST_PORT}`;
@@ -258,6 +260,139 @@ describe("server endpoints", () => {
       const result = await postJSON("/api/prs/batch", batch) as { ok: boolean; count: number };
       expect(result.ok).toBe(true);
       expect(result.count).toBe(2);
+    });
+  });
+
+  describe("POST /api/review — with comment", () => {
+    it("accepts verdict with comment and stores it", async () => {
+      const addResult = await postJSON("/api/pr", makePR({ title: "Comment PR" })) as { index: number };
+      const idx = addResult.index;
+
+      const result = await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "rejected",
+        comment: "fix off-by-one error",
+      }) as { ok: boolean };
+      expect(result.ok).toBe(true);
+
+      const comments = await getJSON("/api/comments") as Record<string, string | null>;
+      expect(comments[`${idx}-0`]).toBe("fix off-by-one error");
+    });
+
+    it("stores null for empty string comment", async () => {
+      const addResult = await postJSON("/api/pr", makePR({ title: "Empty Comment PR" })) as { index: number };
+      const idx = addResult.index;
+
+      await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "approved",
+        comment: "",
+      });
+
+      const comments = await getJSON("/api/comments") as Record<string, string | null>;
+      expect(comments[`${idx}-0`]).toBeNull();
+    });
+
+    it("stores null when comment is omitted", async () => {
+      const addResult = await postJSON("/api/pr", makePR({ title: "No Comment PR" })) as { index: number };
+      const idx = addResult.index;
+
+      await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "approved",
+      });
+
+      const comments = await getJSON("/api/comments") as Record<string, string | null>;
+      expect(comments[`${idx}-0`]).toBeNull();
+    });
+
+    it("rejects comment over 500 chars", async () => {
+      const addResult = await postJSON("/api/pr", makePR({ title: "Long Comment PR" })) as { index: number };
+      const idx = addResult.index;
+
+      const longComment = "x".repeat(501);
+      const result = await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "approved",
+        comment: longComment,
+      }) as { error: string };
+      expect(result.error).toContain("500");
+    });
+
+    it("rejects non-string comment", async () => {
+      const addResult = await postJSON("/api/pr", makePR({ title: "Bad Type PR" })) as { index: number };
+      const idx = addResult.index;
+
+      const result = await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "approved",
+        comment: 123,
+      }) as { error: string };
+      expect(result.error).toContain("string");
+    });
+
+    it("overwrites comment on re-review", async () => {
+      const addResult = await postJSON("/api/pr", makePR({ title: "Overwrite PR" })) as { index: number };
+      const idx = addResult.index;
+
+      await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "approved",
+        comment: "first comment",
+      });
+
+      await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "rejected",
+        comment: "second comment",
+      });
+
+      const comments = await getJSON("/api/comments") as Record<string, string | null>;
+      expect(comments[`${idx}-0`]).toBe("second comment");
+    });
+  });
+
+  describe("DELETE /api/review/:idSuffix — clears comment", () => {
+    it("removes comment when review is deleted", async () => {
+      const addResult = await postJSON("/api/pr", makePR({ title: "Delete Review PR" })) as { index: number };
+      const idx = addResult.index;
+
+      await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "approved",
+        comment: "will be deleted",
+      });
+
+      await deleteJSON(`/api/review/${idx}-0`);
+
+      const comments = await getJSON("/api/comments") as Record<string, string | null>;
+      expect(comments[`${idx}-0`]).toBeUndefined();
+    });
+  });
+
+  describe("PUT /api/pr/:index — clears comments", () => {
+    it("clears comments when PR is updated", async () => {
+      const addResult = await postJSON("/api/pr", makePR({ title: "Update Clears Comments" })) as { index: number };
+      const idx = addResult.index;
+
+      await postJSON("/api/review", {
+        idSuffix: `${idx}-0`,
+        action: "approved",
+        comment: "stale comment",
+      });
+
+      await putJSON(`/api/pr/${idx}`, makePR({ title: "Updated" }));
+
+      const comments = await getJSON("/api/comments") as Record<string, string | null>;
+      expect(comments[`${idx}-0`]).toBeUndefined();
+    });
+  });
+
+  describe("GET /api/comments", () => {
+    it("returns a valid comments object", async () => {
+      const result = await getJSON("/api/comments") as Record<string, unknown>;
+      expect(typeof result).toBe("object");
+      expect(result).not.toBeNull();
     });
   });
 });

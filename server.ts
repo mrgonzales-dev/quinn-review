@@ -16,6 +16,7 @@ import { renderPage } from "./src/render/render-page.ts";
 
 const inputPath = resolve(process.env.QUINN_DATA ?? process.argv[2] ?? "./pr-data.json");
 const reviewsPath = resolve(dirname(inputPath), "reviews.json");
+const commentsPath = resolve(dirname(inputPath), "comments.json");
 const PORT = parseInt(process.env.QUINN_PORT ?? "2400", 10);
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -45,6 +46,19 @@ function loadReviews(): Record<string, string> {
 
 function saveReviews(reviews: Record<string, string>): void {
   writeFileSync(reviewsPath, JSON.stringify(reviews, null, 2), "utf-8");
+}
+
+function loadComments(): Record<string, string | null> {
+  if (!existsSync(commentsPath)) return {};
+  try {
+    return JSON.parse(readFileSync(commentsPath, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveComments(comments: Record<string, string | null>): void {
+  writeFileSync(commentsPath, JSON.stringify(comments, null, 2), "utf-8");
 }
 
 export function validateDiffLine(line: unknown): string | null {
@@ -172,7 +186,8 @@ export function main() {
         const data = loadPRData();
         const reviews = loadReviews();
         const completed = data.filter(d => d.completed).length;
-        return json({ ok: true, prs: data.length, reviews: Object.keys(reviews).length, completed });
+        const comments = loadComments();
+        return json({ ok: true, prs: data.length, reviews: Object.keys(reviews).length, comments: Object.keys(comments).length, completed });
       }
 
       // GET all PRs
@@ -292,6 +307,14 @@ export function main() {
             }
           }
           saveReviews(reviews);
+          // Remove all comments for this PR
+          const comments = loadComments();
+          for (const key of Object.keys(comments)) {
+            if (key.startsWith(prefix)) {
+              delete comments[key];
+            }
+          }
+          saveComments(comments);
           return json({ ok: true, index, reviewsCleared: removed });
         } catch {
           return json({ error: "Bad request body" }, 400);
@@ -307,16 +330,28 @@ export function main() {
       if (path === "/api/review" && req.method === "POST") {
         try {
           const body = await req.json();
-          const { idSuffix, action } = body;
+          const { idSuffix, action, comment } = body;
           if (!idSuffix || (action !== "approved" && action !== "rejected")) {
             return json({ error: "Invalid request. Need idSuffix and action ('approved' or 'rejected')" }, 400);
           }
           if (!/^\d+-\d+$/.test(idSuffix)) {
             return json({ error: "idSuffix must match format {prIndex}-{fileIndex}" }, 400);
           }
+          if (comment !== undefined) {
+            if (typeof comment !== "string") {
+              return json({ error: "Comment must be a string" }, 400);
+            }
+            if (comment.length > 500) {
+              return json({ error: "Comment too long (max 500 chars)" }, 400);
+            }
+          }
+          const normalizedComment = comment && comment.length > 0 ? comment : null;
           const reviews = loadReviews();
           reviews[idSuffix] = action;
           saveReviews(reviews);
+          const comments = loadComments();
+          comments[idSuffix] = normalizedComment;
+          saveComments(comments);
           return json({ ok: true });
         } catch {
           return json({ error: "Bad request body" }, 400);
@@ -333,7 +368,15 @@ export function main() {
         }
         delete reviews[idSuffix];
         saveReviews(reviews);
+        const comments = loadComments();
+        delete comments[idSuffix];
+        saveComments(comments);
         return json({ ok: true });
+      }
+
+      // GET all comments
+      if (path === "/api/comments" && req.method === "GET") {
+        return json(loadComments());
       }
 
       // POST complete a PR (mark as done)
@@ -424,7 +467,8 @@ export function main() {
   console.log(`  PRs: ${data.length}`);
   console.log(`  URL: http://localhost:${serverInstance.port}`);
   console.log(`  Data: ${inputPath}`);
-  console.log(`  Reviews: ${reviewsPath}\n`);
+  console.log(`  Reviews: ${reviewsPath}`);
+  console.log(`  Comments: ${commentsPath}\n`);
 
   const mcpPath = resolve(import.meta.dir, "src/mcp-server.ts");
   const mcp = spawn("bun", ["run", mcpPath], {
