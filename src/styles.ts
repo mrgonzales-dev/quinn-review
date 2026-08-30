@@ -295,6 +295,7 @@ export const STYLES = `
   .landing-overlay {
     position: fixed; inset: 0; background: var(--bg);
     display: flex; align-items: center; justify-content: center;
+    padding: 40px 20px; box-sizing: border-box;
     z-index: 100; animation: fadeIn 0.3s ease;
   }
   @keyframes fadeIn {
@@ -303,7 +304,8 @@ export const STYLES = `
   }
   .landing-modal {
     background: var(--bg-secondary); border: 1px solid var(--border);
-    border-radius: 12px; padding: 48px 40px; max-width: 560px; width: 90%;
+    border-radius: 12px; padding: 48px 40px; max-width: 720px; width: 100%;
+    max-height: calc(100vh - 80px); overflow-y: auto;
     text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   }
   .landing-logo {
