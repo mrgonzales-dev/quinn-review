@@ -44,6 +44,16 @@ You need [Bun](https://bun.sh) installed. If you don't have it:
 curl -fsSL https://bun.sh/install | bash
 ```
 
+### Install
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/mrgonzales-dev/quinn-review.git
+cd quinn-review
+bun install
+```
+
 ### Run the server
 
 ```bash
@@ -53,6 +63,16 @@ bun run server.ts
 Then open `http://localhost:2400` in your browser.
 
 That's it. The server runs locally. No cloud. No account. No data leaves your machine.
+
+### Update
+
+Quinn checks for updates automatically when you open the review page. If a new version is available on GitHub, a yellow badge appears in the sidebar. Click **Update now** to pull the latest changes.
+
+You can also update manually:
+
+```bash
+git pull origin main
+```
 
 ---
 
