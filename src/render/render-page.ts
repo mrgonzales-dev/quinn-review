@@ -399,11 +399,12 @@ ${landing}
       var grid = document.querySelector(".projects-grid");
       var overlay = document.getElementById("landing-overlay");
       if (!grid && !overlay) return;
+      var hadProjects = grid && grid.children.length > 0;
       setInterval(function() {
         fetch("/api/projects")
           .then(function(r) { return r.json(); })
           .then(function(projects) {
-            if (projects && projects.length > 0 && !document.querySelector(".projects-grid")) {
+            if (projects && projects.length > 0 && !hadProjects && document.querySelector(".projects-grid")) {
               window.location.reload();
             }
           })
