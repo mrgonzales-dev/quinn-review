@@ -12,6 +12,10 @@ export interface PRFile {
   deletions?: number;
   diff: DiffLine[];
   explanation: string;
+  /** Full new file content — alternative to diff. Server computes diff from this. */
+  content?: string;
+  /** Original file content — used with content for modified/deleted files. */
+  oldContent?: string;
 }
 
 export interface PRData {

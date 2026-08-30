@@ -236,18 +236,23 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
       name: "quinn_send_pr",
       description:
         "Send a single proposed pull request for human review. " +
-        "The PR contains a title, description, branch name, and files with line-by-line diffs and explanations. " +
+        "The PR contains a title, description, branch name, and files with diffs and explanations. " +
         "The user reviews it in their browser at http://localhost:2400. " +
         "\n\n" +
-        "IMPORTANT: Break each file's changes into separate diff hunks — one hunk per logical change. " +
-        "Do NOT lump all changes into one giant block. " +
-        "Include 1-3 context lines around each change so the reviewer understands where it sits. " +
+        "PREFERRED FORMAT — content-based (saves tokens): " +
+        "Send the full new file content as a 'content' string. " +
+        "For modified files, also send 'oldContent' (the original file text). " +
+        "The server computes the diff automatically. " +
+        "This avoids writing per-line JSON diff objects. " +
+        "\n\n" +
+        "ALTERNATIVE FORMAT — diff-based: " +
+        "Send a 'diff' array with line-by-line objects (type, oldNumber, newNumber, content). " +
+        "Include 1-3 context lines around each change. " +
         "\n\n" +
         "Group related changes into one PR. One PR per goal or feature, not one PR per fix. " +
-        "If multiple fixes target the same subsystem, put them in one PR. " +
         "Each file needs a specific explanation of what changed and why. " +
         "\n\n" +
-        "Sample:\n" +
+        "Sample (content-based):\n" +
         '{\n' +
         '  "title": "Fix path traversal in /api/tree",\n' +
         '  "description": "Resolve path relative to PTY root. Use realpathSync for symlink safety.",\n' +
@@ -255,12 +260,8 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         '  "files": [{\n' +
         '    "path": "server.js",\n' +
         '    "status": "modified",\n' +
-        '    "diff": [\n' +
-        '      {"type":"context","oldNumber":45,"newNumber":45,"content":"  const target = requestedPath"},\n' +
-        '      {"type":"removed","oldNumber":46,"newNumber":null,"content":"    ? path.resolve(requestedPath)"},\n' +
-        '      {"type":"added","oldNumber":null,"newNumber":46,"content":"    ? fs.realpathSync(path.resolve(root, requestedPath))"},\n' +
-        '      {"type":"context","oldNumber":47,"newNumber":47,"content":"    : root;"}\n' +
-        '    ],\n' +
+        '    "content": "full new file text here",\n' +
+        '    "oldContent": "full old file text here",\n' +
         '    "explanation": "Resolve relative to PTY root, not server cwd. Use realpathSync for symlink safety."\n' +
         '  }]\n' +
         '}',
@@ -274,20 +275,34 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           label: { type: "string", description: "Short label for the PR (e.g. 'bugfix', 'feature', 'refactor'). Shown as a badge in the sidebar so the user can identify PRs easily." },
           files: {
             type: "array",
-            description: "List of files in the PR. Each file has its own diff and explanation.",
+            description: "List of files in the PR. Each file needs either 'content' (preferred) or 'diff' array, plus an explanation.",
             items: {
               type: "object",
               properties: {
                 path: { type: "string", description: "File path" },
                 status: { type: "string", enum: ["added", "modified", "deleted"], description: "File change status" },
-                additions: { type: "number", description: "Number of added lines (optional — server auto-computes from diff)" },
-                deletions: { type: "number", description: "Number of removed lines (optional — server auto-computes from diff)" },
+                content: {
+                  type: "string",
+                  description:
+                    "PREFERRED: Full new file content as a string. Server computes the diff automatically. " +
+                    "For 'added' files, only this is needed. For 'modified' files, also send 'oldContent'. " +
+                    "For 'deleted' files, send 'content' with the old file text or use 'oldContent'.",
+                },
+                oldContent: {
+                  type: "string",
+                  description:
+                    "Original file content (before changes). Used with 'content' for 'modified' status. " +
+                    "The server diffs oldContent against content to produce the review diff.",
+                },
+                additions: { type: "number", description: "Number of added lines (optional — server auto-computes)" },
+                deletions: { type: "number", description: "Number of removed lines (optional — server auto-computes)" },
                 diff: {
                   type: "array",
                   description:
-                    "Line-by-line diff. Split into separate hunks per logical change. " +
+                    "ALTERNATIVE: Line-by-line diff. Split into separate hunks per logical change. " +
                     "Include 1-3 context lines around each change. " +
-                    "Each line: type (context/added/removed), oldNumber, newNumber, content.",
+                    "Each line: type (context/added/removed), oldNumber, newNumber, content. " +
+                    "Use 'content' instead to save tokens.",
                   items: {
                     type: "object",
                     properties: {
@@ -306,7 +321,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     "Bad: 'Fixed bugs'. Good: 'Added realpathSync to path containment check to prevent symlink traversal (BUG_002)'.",
                 },
               },
-              required: ["path", "status", "diff", "explanation"],
+              required: ["path", "status", "explanation"],
             },
           },
         },
@@ -335,7 +350,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Update an existing PR by index. Replaces the PR content (title, description, branch, files). " +
         "Clears all review decisions for that PR and resets completed status, putting it back up for review. " +
         "Use this when the user requested changes to a PR you already submitted. " +
-        "Same diff formatting rules apply: break into separate hunks per logical change, include context lines.",
+        "Same format as quinn_send_pr: prefer 'content' over 'diff' to save tokens.",
       inputSchema: {
         type: "object",
         properties: {
@@ -347,20 +362,29 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           label: { type: "string", description: "Short label for the PR (e.g. 'bugfix', 'feature', 'refactor'). Shown as a badge in the sidebar so the user can identify PRs easily." },
           files: {
             type: "array",
-            description: "List of files in the PR. Each file has its own diff and explanation.",
+            description: "List of files in the PR. Each file needs either 'content' (preferred) or 'diff' array, plus an explanation.",
             items: {
               type: "object",
               properties: {
                 path: { type: "string", description: "File path" },
                 status: { type: "string", enum: ["added", "modified", "deleted"], description: "File change status" },
-                additions: { type: "number", description: "Number of added lines (optional — server auto-computes from diff)" },
-                deletions: { type: "number", description: "Number of removed lines (optional — server auto-computes from diff)" },
+                content: {
+                  type: "string",
+                  description:
+                    "PREFERRED: Full new file content as a string. Server computes the diff automatically. " +
+                    "For 'modified' files, also send 'oldContent'.",
+                },
+                oldContent: {
+                  type: "string",
+                  description: "Original file content (before changes). Used with 'content' for 'modified' status.",
+                },
+                additions: { type: "number", description: "Number of added lines (optional — server auto-computes)" },
+                deletions: { type: "number", description: "Number of removed lines (optional — server auto-computes)" },
                 diff: {
                   type: "array",
                   description:
-                    "Line-by-line diff. Split into separate hunks per logical change. " +
-                    "Include 1-3 context lines around each change. " +
-                    "Each line: type (context/added/removed), oldNumber, newNumber, content.",
+                    "ALTERNATIVE: Line-by-line diff. Include 1-3 context lines around each change. " +
+                    "Use 'content' instead to save tokens.",
                   items: {
                     type: "object",
                     properties: {
@@ -379,7 +403,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     "Bad: 'Fixed bugs'. Good: 'Added realpathSync to path containment check to prevent symlink traversal (BUG_002)'.",
                 },
               },
-              required: ["path", "status", "diff", "explanation"],
+              required: ["path", "status", "explanation"],
             },
           },
         },
@@ -393,7 +417,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Each PR follows the same format as quinn_send_pr. " +
         "Use this when you have 2-5 PRs ready to review. " +
         "\n\n" +
-        "Same rules apply: break diffs into separate hunks per logical change, include context lines, write specific explanations.",
+        "Prefer 'content' over 'diff' to save tokens. Write specific explanations.",
       inputSchema: {
         type: "object",
         properties: {
@@ -416,10 +440,19 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                     properties: {
                       path: { type: "string" },
                       status: { type: "string", enum: ["added", "modified", "deleted"] },
+                      content: {
+                        type: "string",
+                        description: "PREFERRED: Full new file content. Server computes diff. For 'modified', also send 'oldContent'.",
+                      },
+                      oldContent: {
+                        type: "string",
+                        description: "Original file content. Used with 'content' for 'modified' status.",
+                      },
                       additions: { type: "number" },
                       deletions: { type: "number" },
                       diff: {
                         type: "array",
+                        description: "ALTERNATIVE: Line-by-line diff. Use 'content' instead to save tokens.",
                         items: {
                           type: "object",
                           properties: {
@@ -433,7 +466,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
                       },
                       explanation: { type: "string" },
                     },
-                    required: ["path", "status", "diff", "explanation"],
+                    required: ["path", "status", "explanation"],
                   },
                 },
               },

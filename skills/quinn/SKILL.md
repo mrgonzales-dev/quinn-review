@@ -23,6 +23,36 @@ Quinn supports **multiple projects**. Each project is a separate folder with its
 
 Send one PR object per `quinn_send_pr` call or in the `prs` array of `quinn_send_batch`. The server validates the structure and rejects invalid data with an error message.
 
+### Preferred format — content-based (saves tokens)
+
+Send the full file content as a string. The server computes the diff automatically. This avoids writing per-line JSON diff objects.
+
+```json
+{
+  "title": "Short summary of the proposed changes",
+  "description": "Longer explanation of what and why. What does this PR do?",
+  "branch": "ai-proposal/short-branch-name",
+  "label": "bugfix",
+  "files": [
+    {
+      "path": "relative/path/to/file.ext",
+      "status": "modified",
+      "content": "full new file text here",
+      "oldContent": "full old file text here",
+      "explanation": "Why this change was made. What it does."
+    }
+  ]
+}
+```
+
+For `added` files: send only `content` (the new file text).
+For `modified` files: send both `content` (new) and `oldContent` (original).
+For `deleted` files: send `content` or `oldContent` with the file text being removed.
+
+### Alternative format — diff-based
+
+Send a `diff` array with line-by-line objects. Use this only when you need precise control over which lines appear in the review.
+
 ```json
 {
   "title": "Short summary of the proposed changes",
@@ -58,13 +88,17 @@ You can send one PR or multiple PRs. Each PR appears as a separate entry in the 
 - **files**: Array of file objects. One per file you propose to change.
 - **path**: Relative to the user's project root.
 - **status**: `added` for new files, `modified` for changed files, `deleted` for removed files.
-- **additions / deletions**: Optional. The server auto-computes these from the diff array.
-- **diff**: Array of line objects in order.
+- **content**: Full new file content as a string. Server computes the diff. Preferred over `diff`.
+- **oldContent**: Original file content. Used with `content` for `modified` status.
+- **additions / deletions**: Optional. The server auto-computes these from the diff.
+- **diff**: Array of line objects in order. Alternative to `content`.
   - `type`: `context` (unchanged), `added` (new line), `removed` (deleted line).
   - `oldNumber`: Line number in the original file. `null` for added lines.
   - `newNumber`: Line number in the new file. `null` for removed lines.
   - `content`: The raw line content (no leading +/- sign).
 - **explanation**: One or two sentences. Why you made this specific change to this file.
+
+Each file must have either `content` or `diff` (not neither). If both are present, `content` takes precedence.
 
 ## Starting the review server
 

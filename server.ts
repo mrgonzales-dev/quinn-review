@@ -13,6 +13,7 @@ import { resolve, dirname } from "node:path";
 import { execSync, spawn } from "node:child_process";
 import type { PRData, PRFile, DiffLine, QuinnData, Project, ReviewEntry } from "./src/types.ts";
 import { renderPage } from "./src/render/render-page.ts";
+import { computeDiff, computeAddedDiff, computeDeletedDiff } from "./src/diff.ts";
 
 const dataPath = resolve(process.env.QUINN_DATA ?? process.argv[2] ?? "./quinn-data.json");
 const PORT = parseInt(process.env.QUINN_PORT ?? "2400", 10);
@@ -102,16 +103,47 @@ export function validateFile(file: unknown): string | null {
   if (f.deletions !== undefined && (typeof f.deletions !== "number" || f.deletions < 0)) {
     return "File deletions must be a non-negative number";
   }
-  if (!Array.isArray(f.diff) || f.diff.length === 0) {
-    return "File diff must be a non-empty array";
-  }
-  for (let i = 0; i < f.diff.length; i++) {
-    const err = validateDiffLine(f.diff[i]);
-    if (err) return `Diff line ${i}: ${err}`;
-  }
   if (typeof f.explanation !== "string" || !f.explanation) {
     return "File explanation must be a non-empty string";
   }
+
+  const hasDiff = Array.isArray(f.diff) && f.diff.length > 0;
+  const hasContent = typeof f.content === "string";
+
+  if (!hasDiff && !hasContent) {
+    return "File must have either a non-empty 'diff' array or a 'content' string";
+  }
+
+  if (hasContent) {
+    // Content-based format: compute diff server-side
+    const content = f.content as string;
+    const oldContent = typeof f.oldContent === "string" ? f.oldContent as string : "";
+
+    if (f.status === "added") {
+      f.diff = computeAddedDiff(content);
+    } else if (f.status === "deleted") {
+      f.diff = computeDeletedDiff(oldContent || content);
+    } else {
+      // modified — need oldContent to compute diff
+      if (!oldContent) {
+        // If no oldContent provided, treat all lines as added
+        f.diff = computeAddedDiff(content);
+      } else {
+        f.diff = computeDiff(oldContent, content);
+      }
+    }
+
+    if (f.diff.length === 0) {
+      return "Computed diff is empty — content and oldContent are identical";
+    }
+  } else {
+    // Diff-based format (original): validate each line
+    for (let i = 0; i < f.diff.length; i++) {
+      const err = validateDiffLine(f.diff[i]);
+      if (err) return `Diff line ${i}: ${err}`;
+    }
+  }
+
   const addedCount = (f.diff as DiffLine[]).filter(d => d.type === "added").length;
   const removedCount = (f.diff as DiffLine[]).filter(d => d.type === "removed").length;
   if (f.additions !== undefined && addedCount !== f.additions) {

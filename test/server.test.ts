@@ -283,6 +283,203 @@ describe("server endpoints", () => {
     });
   });
 
+  // ── Content-based format ──────────────────────────────────────
+
+  describe("content-based PR format", () => {
+    const PROJ = "content-test-proj";
+
+    beforeAll(async () => {
+      await postJSON("/api/project", { name: "Content Test Proj", theme: "blue" });
+    });
+
+    it("accepts content for added file and computes diff", async () => {
+      const pr = {
+        title: "Content Added",
+        description: "Test content-based added file",
+        branch: "test/content-added",
+        files: [{
+          path: "new-file.ts",
+          status: "added",
+          content: "const x = 1;\nconst y = 2;\n",
+          explanation: "New file with two constants",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { ok: boolean; index: number };
+      expect(result.ok).toBe(true);
+
+      const fetched = await getJSON(`/api/project/${PROJ}/pr/${result.index}`) as {
+        files: Array<{ diff: Array<{ type: string; content: string }>; additions: number; deletions: number }>;
+      };
+      expect(fetched.files[0].additions).toBe(2);
+      expect(fetched.files[0].deletions).toBe(0);
+      expect(fetched.files[0].diff.every(d => d.type === "added")).toBe(true);
+    });
+
+    it("accepts content + oldContent for modified file and computes diff", async () => {
+      const pr = {
+        title: "Content Modified",
+        description: "Test content-based modified file",
+        branch: "test/content-modified",
+        files: [{
+          path: "modified.ts",
+          status: "modified",
+          content: "const x = 2;\nconst y = 3;\n",
+          oldContent: "const x = 1;\nconst y = 2;\n",
+          explanation: "Changed x and y values",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { ok: boolean; index: number };
+      expect(result.ok).toBe(true);
+
+      const fetched = await getJSON(`/api/project/${PROJ}/pr/${result.index}`) as {
+        files: Array<{ diff: Array<{ type: string; content: string }>; additions: number; deletions: number }>;
+      };
+      const diff = fetched.files[0].diff;
+      const addedLines = diff.filter(d => d.type === "added");
+      const removedLines = diff.filter(d => d.type === "removed");
+      expect(addedLines.length).toBe(2);
+      expect(removedLines.length).toBe(2);
+      expect(addedLines.map(d => d.content)).toEqual(["const x = 2;", "const y = 3;"]);
+      expect(removedLines.map(d => d.content)).toEqual(["const x = 1;", "const y = 2;"]);
+    });
+
+    it("rejects file with neither content nor diff", async () => {
+      const pr = {
+        title: "No Content No Diff",
+        description: "Should fail",
+        branch: "test/none",
+        files: [{
+          path: "empty.ts",
+          status: "modified",
+          explanation: "Missing both content and diff",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("content");
+    });
+
+    it("rejects file with identical content and oldContent", async () => {
+      const pr = {
+        title: "No Changes",
+        description: "Should fail",
+        branch: "test/identical",
+        files: [{
+          path: "same.ts",
+          status: "modified",
+          content: "const x = 1;\n",
+          oldContent: "const x = 1;\n",
+          explanation: "No actual changes",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { error: string };
+      expect(result.error).toContain("empty");
+    });
+
+    it("still accepts diff-based format (backward compatibility)", async () => {
+      const result = await postJSON(`/api/project/${PROJ}/pr`, makePR({ title: "Diff Format OK" })) as { ok: boolean };
+      expect(result.ok).toBe(true);
+    });
+
+    it("content takes precedence when both content and diff are provided", async () => {
+      const pr = {
+        title: "Both Formats",
+        description: "Content should win",
+        branch: "test/both",
+        files: [{
+          path: "precedence.ts",
+          status: "added",
+          content: "const z = 99;\n",
+          diff: [
+            { type: "added", oldNumber: null, newNumber: 1, content: "const wrong = 0;" },
+          ],
+          explanation: "Testing precedence",
+        }],
+      };
+      const result = await postJSON(`/api/project/${PROJ}/pr`, pr) as { ok: boolean; index: number };
+      expect(result.ok).toBe(true);
+
+      const fetched = await getJSON(`/api/project/${PROJ}/pr/${result.index}`) as {
+        files: Array<{ diff: Array<{ content: string }> }>;
+      };
+      expect(fetched.files[0].diff[0].content).toBe("const z = 99;");
+    });
+  });
+
+  // ── Diff computation unit tests ────────────────────────────────
+
+  describe("diff computation", () => {
+    // Import the diff functions directly
+    const { computeDiff, computeAddedDiff, computeDeletedDiff } = require("../src/diff.ts");
+
+    it("computeDiff produces correct added/removed lines", () => {
+      const old = "a\nb\nc\n";
+      const new_ = "a\nx\nc\n";
+      const diff = computeDiff(old, new_);
+      const types = diff.map((d: { type: string }) => d.type);
+      expect(types).toContain("added");
+      expect(types).toContain("removed");
+      const added = diff.filter((d: { type: string }) => d.type === "added");
+      const removed = diff.filter((d: { type: string }) => d.type === "removed");
+      expect(added[0].content).toBe("x");
+      expect(removed[0].content).toBe("b");
+    });
+
+    it("computeDiff includes context lines around changes", () => {
+      const old = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\n";
+      const new_ = "line1\nline2\nline3\nCHANGED\nline5\nline6\nline7\nline8\n";
+      const diff = computeDiff(old, new_);
+      const contextLines = diff.filter((d: { type: string }) => d.type === "context");
+      expect(contextLines.length).toBeGreaterThan(0);
+    });
+
+    it("computeDiff returns empty for identical content", () => {
+      const diff = computeDiff("same\ncontent\n", "same\ncontent\n");
+      const changes = diff.filter((d: { type: string }) => d.type !== "context");
+      expect(changes).toHaveLength(0);
+    });
+
+    it("computeAddedDiff marks all lines as added", () => {
+      const diff = computeAddedDiff("a\nb\nc\n");
+      expect(diff).toHaveLength(3);
+      expect(diff.every((d: { type: string }) => d.type === "added")).toBe(true);
+      expect(diff[0].newNumber).toBe(1);
+      expect(diff[2].newNumber).toBe(3);
+    });
+
+    it("computeDeletedDiff marks all lines as removed", () => {
+      const diff = computeDeletedDiff("a\nb\nc\n");
+      expect(diff).toHaveLength(3);
+      expect(diff.every((d: { type: string }) => d.type === "removed")).toBe(true);
+      expect(diff[0].oldNumber).toBe(1);
+      expect(diff[2].oldNumber).toBe(3);
+    });
+
+    it("computeAddedDiff returns empty for empty content", () => {
+      const diff = computeAddedDiff("");
+      expect(diff).toHaveLength(0);
+    });
+
+    it("computeDiff handles insertions at end", () => {
+      const old = "a\nb\n";
+      const new_ = "a\nb\nc\nd\n";
+      const diff = computeDiff(old, new_);
+      const added = diff.filter((d: { type: string }) => d.type === "added");
+      expect(added).toHaveLength(2);
+      expect(added[0].content).toBe("c");
+      expect(added[1].content).toBe("d");
+    });
+
+    it("computeDiff handles deletions at start", () => {
+      const old = "a\nb\nc\n";
+      const new_ = "c\n";
+      const diff = computeDiff(old, new_);
+      const removed = diff.filter((d: { type: string }) => d.type === "removed");
+      const added = diff.filter((d: { type: string }) => d.type === "added");
+      expect(removed).toHaveLength(2);
+      expect(added).toHaveLength(0);
+    });
+  });
+
   // ── Project-scoped review operations ──────────────────────────
 
   describe("project-scoped review operations", () => {
