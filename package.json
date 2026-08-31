@@ -1,11 +1,9 @@
 {
   "name": "quinn-review",
   "version": "1.0.0",
-  "description": "Quinn — AI code review skill that renders proposed changes as GitHub-style pull request pages",
+  "description": "Quinn — AI code review skill that generates static HTML diff reports from proposed changes",
   "type": "module",
   "scripts": {
-    "start": "bun run server.ts",
-    "dev": "bun --watch run server.ts",
     "mcp": "bun run src/mcp-server.ts"
   },
   "bin": {

@@ -24,25 +24,4 @@ export interface PRData {
   branch: string;
   label?: string;
   files: PRFile[];
-  completed?: boolean;
-}
-
-export interface ReviewEntry {
-  verdict: string;
-  comment: string | null;
-}
-
-export interface Project {
-  id: string;
-  name: string;
-  theme: string;
-  /** Filesystem root path for reading existing files to compute diffs. */
-  path?: string;
-  prs: PRData[];
-  reviews: Record<string, ReviewEntry>;
-}
-
-export interface QuinnData {
-  settings: { firstTimeSeen: boolean };
-  projects: Project[];
 }

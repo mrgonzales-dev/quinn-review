@@ -1,6 +1,6 @@
 {
   "name": "quinn",
-  "description": "AI code review skill that renders proposed changes as GitHub-style pull request pages for human review",
+  "description": "AI code review skill that generates static HTML diff reports from proposed changes",
   "version": "1.0.0",
   "author": { "name": "mrgonzales-dev", "url": "https://github.com/mrgonzales-dev" },
   "homepage": "https://github.com/mrgonzales-dev/quinn-review",
