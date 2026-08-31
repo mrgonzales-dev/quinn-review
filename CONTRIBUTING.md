@@ -6,8 +6,8 @@ Thanks for your interest in Quinn. This project is open source and welcomes cont
 
 - **Report bugs** — Open an issue with steps to reproduce.
 - **Suggest features** — Open an issue and describe the problem you want to solve.
-- **Improve the UI** — The review page is rendered from `src/render-*.ts` files. All CSS lives in `src/styles.ts`.
-- **Add MCP tools** — `src/mcp-server.ts` defines the tools agents can call. Each tool maps to an HTTP endpoint on the review server.
+- **Improve the UI** — The report page is rendered from `src/render/` files. All CSS lives in `src/styles.ts`.
+- **Improve the CLI** — `src/generate-report.ts` handles stdin input, validation, diff computation, and report writing.
 - **Fix bugs** — Pick an open issue and submit a pull request.
 
 ## Setup
@@ -20,13 +20,11 @@ Thanks for your interest in Quinn. This project is open source and welcomes cont
 bun install
 ```
 
-4. Start the review server:
+4. Test the CLI:
 
 ```bash
-bun run server.ts
+echo '{"projectPath":".","title":"Test","description":"Test","branch":"test","files":[{"path":"src/test.ts","status":"added","content":"const x = 1;\n","explanation":"test"}]}' | bun run src/generate-report.ts
 ```
-
-5. Open `http://localhost:2400`.
 
 ## Code style
 
@@ -39,33 +37,33 @@ bun run server.ts
 
 1. Fork the repo and create a branch from `main`.
 2. Make your changes.
-3. Test locally — start the server and send a test PR using `send-pr.ts`.
+3. Test locally — run `bun test` and pipe a test PR JSON to the CLI.
 4. Open a pull request with a clear description of what changed and why.
 
-## MCP tools
+## CLI
 
-If you add a new MCP tool in `src/mcp-server.ts`:
+If you add new CLI features in `src/generate-report.ts`:
 
-1. Add the tool definition to the `tools/list` handler.
-2. Add the tool handler to the `tools/call` handler.
-3. Document the tool in `skills/quinn/SKILL.md`.
-4. Make sure it maps to an existing HTTP endpoint on the review server.
+1. Add the logic to the appropriate function.
+2. Document the feature in `skills/quinn/SKILL.md`.
+3. Add tests in `test/generate-report.test.ts`.
+4. Run `bun test` to confirm all tests pass.
 
 ## Project structure
 
 ```
-server.ts              # HTTP review server (port 2400)
-send-pr.ts             # Helper script for sending test PRs
 src/
-  mcp-server.ts        # MCP server (stdio transport)
-  render-page.ts       # Full HTML page
-  render-sidebar.ts    # PR list sidebar
-  render-file.ts       # File card with diff
-  render-diff.ts       # Diff table
-  styles.ts            # All CSS
+  generate-report.ts   # CLI entry point (stdin → report → stdout)
+  diff.ts              # LCS-based line diff computation
   types.ts             # TypeScript types
+  styles.ts            # All CSS
   escape.ts            # HTML escaping
+  render/
+    render-report.ts   # Full HTML report renderer
+    render-diff.ts     # Diff table renderer
+  assets/              # Logo and images
 skills/quinn/SKILL.md  # Skill documentation for AI agents
+test/generate-report.test.ts  # Test suite
 ```
 
 ## Questions

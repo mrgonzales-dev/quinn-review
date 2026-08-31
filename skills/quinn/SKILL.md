@@ -4,7 +4,7 @@
 
 Quinn is a skill that lets an AI agent propose code changes as **static HTML reports**. Each report shows GitHub-style diffs for the proposed changes. The reports are self-contained HTML files with inline CSS. No JavaScript. No interactivity. No HTTP server required.
 
-The AI agent sends PR data through the MCP tools. Quinn computes diffs from existing files on disk and writes a report HTML file. The user opens the file in a browser to review the changes.
+The AI agent sends PR data through the CLI. Quinn computes diffs from existing files on disk and writes a report HTML file. The user opens the file in a browser to review the changes.
 
 ## Workflow
 
@@ -12,14 +12,35 @@ The AI agent sends PR data through the MCP tools. Quinn computes diffs from exis
 
 1. The user gives you a task (e.g., "add input validation to the login form").
 2. You analyze the relevant files in the user's codebase.
-3. Call `quinn_generate_report` with the PR data and the project's filesystem path. Quinn reads existing files from disk, computes diffs, and writes an HTML report file.
+3. Pipe PR JSON to the CLI. Quinn reads existing files from disk, computes diffs, and writes an HTML report file.
 4. Tell the user to open the generated report file in their browser.
 5. The user reviews the diffs and tells you which changes they approve or reject.
 6. Apply only the approved changes to the user's project files. Skip rejected files.
 
+## CLI Usage
+
+Quinn runs as a CLI script. Pipe PR JSON to stdin. Quinn writes the report to disk and prints the full path to stdout.
+
+```bash
+echo '{"projectPath":"/path/to/project","title":"...","description":"...","branch":"...","files":[...]}' | bun run src/generate-report.ts
+```
+
+The script path is relative to the Quinn project root. The last argument is the path to the Quinn repository on your system.
+
+**Output (stdout):** The full path to the generated report file.
+**Errors (stderr):** The process exits with code 1 on error.
+
+### Listing reports
+
+To list existing reports for a project, use the `listReportFiles` function or check the `reports/` directory inside the project path. Reports are sorted by newest first.
+
+### Reading a report
+
+To read a report file, open the HTML file directly from the `reports/` directory. Each file is self-contained HTML with inline CSS.
+
 ## PR Schema
 
-Send one PR object per `quinn_generate_report` call. The server validates the structure and rejects invalid data with an error message.
+Send one PR object per CLI call. The script validates the structure and rejects invalid data with an error message.
 
 ### Format — content or edits
 
@@ -93,17 +114,7 @@ For `deleted` files: send `content` (can be empty string). Quinn reads the exist
 - **additions / deletions**: Auto-computed by the server from the diff. Do not send these.
 - **explanation**: One or two sentences. Why you made this specific change to this file.
 
-Each file must have either `content` or `edits` (not both). The server computes the diff from the existing file on disk.
-
-## MCP Tools
-
-Quinn exposes these tools via the Model Context Protocol.
-
-| Tool | Purpose |
-|---|---|
-| `quinn_generate_report` | Generate a static HTML report from PR data. Pass `projectPath`, `title`, `description`, `branch`, `files`, and optional `label`. Computes diffs from existing files on disk. Returns the filename and path of the generated report. |
-| `quinn_list_reports` | List all generated HTML reports. Pass `projectPath` to list reports for a specific project. Returns filenames sorted by newest first. |
-| `quinn_get_report` | Read the full HTML content of a generated report by filename. Pass `projectPath` to read from a specific project's reports directory. |
+Each file must have either `content` or `edits` (not both). The script computes the diff from the existing file on disk.
 
 ## Report output
 
@@ -120,7 +131,7 @@ After generating a report, tell the user:
 
 > I have prepared proposed changes for your review. Open this file in your browser:
 >
-> `{path returned by quinn_generate_report}`
+> `{path printed by the CLI}`
 >
 > Review the diffs. Tell me which changes you approve or reject. I will apply only the approved changes.
 
@@ -129,7 +140,7 @@ After generating a report, tell the user:
 - Only include files that have actual changes. Do not list unchanged files.
 - Keep diffs focused. Show enough context lines (2-3 around changes) so the user understands the surrounding code.
 - Write clear explanations. The user should understand *why* without reading the diff.
-- Do not write code to the user's project files. Generate reports via the MCP tools. Apply code only after the user approves.
+- Do not write code to the user's project files. Generate reports via the CLI. Apply code only after the user approves.
 - Group related changes into one PR. One PR per goal or feature, not one PR per file or per fix. If multiple fixes target the same subsystem, put them in one PR. A PR can have multiple file changes as long as they share the same goal or idea. Only split into separate PRs when changes are unrelated.
 
 ## Communication Standard — ASD-STE100

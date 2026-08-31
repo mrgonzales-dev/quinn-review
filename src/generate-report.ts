@@ -1,16 +1,16 @@
 #!/usr/bin/env bun
 /**
- * mcp-server.ts — Quinn MCP server.
- * Generates static HTML reports from PR data. No HTTP server required.
- * Uses stdio transport for AI agent communication via Model Context Protocol.
+ * generate-report.ts — Quinn CLI entry point.
+ * Reads PR JSON from stdin, computes diffs from existing files on disk,
+ * and writes a self-contained HTML report file.
+ *
+ * Usage:
+ *   echo '{"projectPath":"...","title":"...","files":[...]}' | bun run src/generate-report.ts
+ *
+ * Output (stdout): the full path to the generated report file.
+ * Errors are written to stderr and the process exits with code 1.
  */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import type { PRData, PRFile, DiffLine } from "./types.ts";
@@ -198,162 +198,37 @@ export function readReportContent(filename: string, projectPath?: string): strin
   return readFileSync(filepath, "utf-8");
 }
 
-// ── MCP server ─────────────────────────────────────────────────
+// ── CLI entry point ────────────────────────────────────────────
 
-const server = new Server(
-  { name: "quinn", version: "1.0.0" },
-  { capabilities: { tools: {} } }
-);
+async function main(): Promise<void> {
+  const stdin = readFileSync(0, "utf-8");
 
-server.setRequestHandler(ListToolsRequestSchema, () => ({
-  tools: [
-    {
-      name: "quinn_generate_report",
-      description:
-        "Generate a static HTML report from PR data. Computes diffs from existing files on disk. " +
-        "The report is a self-contained HTML file with inline CSS — no JavaScript, no interactivity. " +
-        "Pass 'projectPath' so Quinn can read existing files and compute diffs. " +
-        "Each file uses either 'content' (full new file text) or 'edits' (search/replace pairs). " +
-        "Returns the filename and path of the generated report.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          projectPath: {
-            type: "string",
-            description: "Filesystem root path for reading existing files to compute diffs.",
-          },
-          title: { type: "string", description: "Short summary of the proposed changes." },
-          description: { type: "string", description: "Longer explanation of what and why." },
-          branch: { type: "string", description: "Branch name with ai-proposal/ prefix." },
-          label: { type: "string", description: "Short tag shown as a badge (optional)." },
-          files: {
-            type: "array",
-            description: "Array of file objects. Each has path, status, content or edits, and explanation.",
-            items: {
-              type: "object",
-              properties: {
-                path: { type: "string" },
-                status: { type: "string", enum: ["added", "modified", "deleted"] },
-                content: { type: "string" },
-                edits: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      search: { type: "string" },
-                      replace: { type: "string" },
-                    },
-                  },
-                },
-                explanation: { type: "string" },
-              },
-            },
-          },
-        },
-        required: ["title", "description", "branch", "files"],
-      },
-    },
-    {
-      name: "quinn_list_reports",
-      description:
-        "List all generated HTML reports. Returns filenames sorted by newest first. " +
-        "Pass 'projectPath' to list reports for a specific project; otherwise lists reports in the current working directory.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          projectPath: {
-            type: "string",
-            description: "Filesystem root path where reports/ is located. Optional.",
-          },
-        },
-        required: [],
-      },
-    },
-    {
-      name: "quinn_get_report",
-      description:
-        "Read the full HTML content of a generated report by filename. " +
-        "Returns the raw HTML string. " +
-        "Pass 'projectPath' to read from a specific project's reports directory.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          filename: { type: "string", description: "The report filename from quinn_list_reports." },
-          projectPath: {
-            type: "string",
-            description: "Filesystem root path where reports/ is located. Optional.",
-          },
-        },
-        required: ["filename"],
-      },
-    },
-  ],
-}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-
-  try {
-    switch (name) {
-      case "quinn_generate_report": {
-        const projectPath = args?.projectPath as string | undefined;
-        const pr: PRData = {
-          title: args?.title as string,
-          description: args?.description as string,
-          branch: args?.branch as string,
-          label: args?.label as string | undefined,
-          files: args?.files as PRFile[],
-        };
-
-        const err = validatePR(pr, projectPath);
-        if (err) {
-          return { content: [{ type: "text", text: `Validation error: ${err}` }], isError: true };
-        }
-
-        const result = writeReport(pr, projectPath);
-        return {
-          content: [{
-            type: "text",
-            text: `Report generated successfully.\nFilename: ${result.filename}\nPath: ${result.path}`,
-          }],
-        };
-      }
-
-      case "quinn_list_reports": {
-        const projectPath = args?.projectPath as string | undefined;
-        const files = listReportFiles(projectPath);
-        if (files.length === 0) {
-          return { content: [{ type: "text", text: "No reports found." }] };
-        }
-        return {
-          content: [{
-            type: "text",
-            text: `Reports (${files.length}):\n${files.map(f => `  - ${f}`).join("\n")}`,
-          }],
-        };
-      }
-
-      case "quinn_get_report": {
-        const filename = args?.filename as string;
-        if (!filename) {
-          return { content: [{ type: "text", text: "filename is required" }], isError: true };
-        }
-        const projectPath = args?.projectPath as string | undefined;
-        const content = readReportContent(filename, projectPath);
-        if (content === null) {
-          return { content: [{ type: "text", text: `Report '${filename}' not found` }], isError: true };
-        }
-        return { content: [{ type: "text", text: content }] };
-      }
-
-      default:
-        return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+  if (!stdin) {
+    process.stderr.write("No input provided. Pipe PR JSON to stdin.\n");
+    process.exit(1);
   }
-});
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+  let pr: unknown;
+  try {
+    pr = JSON.parse(stdin);
+  } catch {
+    process.stderr.write("Invalid JSON input.\n");
+    process.exit(1);
+  }
+
+  const projectPath = (pr as Record<string, unknown>)?.projectPath as string | undefined;
+
+  const err = validatePR(pr, projectPath);
+  if (err) {
+    process.stderr.write(`Validation error: ${err}\n`);
+    process.exit(1);
+  }
+
+  const result = writeReport(pr as PRData, projectPath);
+  process.stdout.write(`${result.path}\n`);
+}
+
+// Run CLI only when executed directly (not when imported by tests)
+if (import.meta.main) {
+  await main();
+}

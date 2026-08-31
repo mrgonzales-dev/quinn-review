@@ -4,6 +4,9 @@ pr-data.json
 reviews.json
 comments.json
 
+# Generated reports
+reports/
+
 # Build output
 dist/
 

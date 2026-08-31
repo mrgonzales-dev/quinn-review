@@ -12,7 +12,7 @@ No surprises. No blind trust. Just clear, visual review.
 
 1. You give the AI a task — anything from "fix the login bug" to "add dark mode."
 2. The AI reads your code and figures out what needs to change.
-3. The AI calls Quinn's MCP tools with the proposed changes. Quinn computes diffs from your existing files on disk and writes a static HTML report.
+3. The AI pipes PR JSON to Quinn's CLI. Quinn computes diffs from your existing files on disk and writes a static HTML report.
 4. You open the generated report file in your browser.
 5. Each file shows a color-coded diff — green for additions, red for deletions.
 6. You tell the AI which changes you approve or reject.
@@ -52,12 +52,12 @@ cd quinn-review
 bun install
 ```
 
-### Run the MCP server
+### Run the CLI
 
-Quinn runs as an MCP server using stdio transport. No HTTP server. No port to open. The AI agent communicates with Quinn through the Model Context Protocol.
+Quinn runs as a CLI script. Pipe PR JSON to stdin. Quinn writes the report to disk and prints the full path to stdout.
 
 ```bash
-bun run src/mcp-server.ts
+echo '{"projectPath":"/path/to/project","title":"...","description":"...","branch":"...","files":[...]}' | bun run src/generate-report.ts
 ```
 
 Reports are written to `{projectPath}/reports/` when a project path is provided, or `reports/` in the current working directory otherwise. Each report is a self-contained HTML file with inline CSS. No JavaScript. No interactivity. No internet connection required.
@@ -70,15 +70,13 @@ git pull origin main
 
 ---
 
-## MCP tools
+## CLI
 
-Quinn exposes three tools via the Model Context Protocol:
+Quinn exposes one CLI script:
 
-| Tool | Purpose |
+| Command | Purpose |
 |---|---|
-| `quinn_generate_report` | Generate a static HTML report from PR data. Pass `projectPath`, `title`, `description`, `branch`, `files`, and optional `label`. Computes diffs from existing files on disk. Returns the filename and path of the generated report. |
-| `quinn_list_reports` | List all generated HTML reports. Pass `projectPath` to list reports for a specific project. Returns filenames sorted by newest first. |
-| `quinn_get_report` | Read the full HTML content of a generated report by filename. Pass `projectPath` to read from a specific project's reports directory. |
+| `bun run src/generate-report.ts` | Read PR JSON from stdin, compute diffs from existing files on disk, write a static HTML report, and print the report path to stdout. Errors go to stderr with exit code 1. |
 
 ### File formats
 
@@ -91,10 +89,10 @@ Each file in a PR uses either `content` (full new file text) or `edits` (search/
 
 ## Using Quinn with an AI agent
 
-Quinn works with any AI coding agent that supports the Model Context Protocol. The agent follows this flow:
+Quinn works with any AI coding agent that can run shell commands. The agent follows this flow:
 
 1. Analyze your codebase and plan changes.
-2. Call `quinn_generate_report` with the proposed changes and your project path.
+2. Pipe PR JSON to `bun run src/generate-report.ts` with the proposed changes and your project path.
 3. Tell you to open the generated report file in your browser.
 4. Wait for your review decisions.
 5. Apply only the approved changes.
@@ -108,7 +106,7 @@ The agent handles all the technical work. You just review and decide.
 ```
 quinn-review/
 ├── src/
-│   ├── mcp-server.ts          # MCP server with stdio transport
+│   ├── generate-report.ts     # CLI entry point (stdin → report → stdout)
 │   ├── diff.ts                # LCS-based line diff computation
 │   ├── types.ts               # TypeScript types
 │   ├── styles.ts              # All CSS styles (inline in reports)
@@ -120,9 +118,8 @@ quinn-review/
 ├── skills/quinn/SKILL.md      # Full skill documentation for AI agents
 ├── AGENTS.md                  # Agent behavior rules
 ├── plugin.json                # Agent auto-discovery manifest
-├── .mcp.json                  # MCP server config
 ├── package.json               # Project metadata
-└── test/mcp.test.ts           # Test suite
+└── test/generate-report.test.ts  # Test suite
 ```
 
 ---

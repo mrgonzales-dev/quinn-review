@@ -7,6 +7,5 @@
   "repository": "https://github.com/mrgonzales-dev/quinn-review",
   "license": "MIT",
   "keywords": ["code-review", "pull-request", "diff-viewer", "ai-skill"],
-  "skills": "./skills/",
-  "mcpServers": "./.mcp.json"
+  "skills": "./skills/"
 }

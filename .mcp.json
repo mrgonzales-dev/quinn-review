@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "quinn": {
-      "command": "bun",
-      "args": ["run", "src/mcp-server.ts"]
-    }
-  }
-}

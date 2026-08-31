@@ -4,14 +4,11 @@
   "description": "Quinn — AI code review skill that generates static HTML diff reports from proposed changes",
   "type": "module",
   "scripts": {
-    "mcp": "bun run src/mcp-server.ts"
+    "report": "bun run src/generate-report.ts"
   },
   "bin": {
-    "quinn-mcp": "src/mcp-server.ts"
+    "quinn-report": "src/generate-report.ts"
   },
-  "keywords": ["code-review", "pull-request", "ai-skill", "diff-viewer", "mcp"],
-  "license": "MIT",
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0"
-  }
+  "keywords": ["code-review", "pull-request", "ai-skill", "diff-viewer"],
+  "license": "MIT"
 }

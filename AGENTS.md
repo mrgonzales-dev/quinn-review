@@ -71,7 +71,7 @@ Pick one type per commit:
 
 ### Scope
 
-Optional. Use the module or area name: `server`, `mcp`, `render`, `diff`, `styles`, `types`, `skill`, `api`.
+Optional. Use the module or area name: `cli`, `render`, `diff`, `styles`, `types`, `skill`, `api`.
 
 ### Subject
 
@@ -98,11 +98,11 @@ Optional. Use the module or area name: `server`, `mcp`, `render`, `diff`, `style
 ### Examples
 
 ```
-feat(mcp): add quinn_complete tool
+feat(cli): add report generation from stdin
 
-- Add tool definition to ListToolsRequestSchema handler
-- Add tool handler to CallToolRequestSchema handler
-- Maps to POST /api/complete endpoint on review server
+- Read PR JSON from stdin in generate-report.ts
+- Validate PR structure and compute diffs from disk
+- Write HTML report and print path to stdout
 ```
 
 ```
@@ -113,10 +113,10 @@ fix(render): escape file path in diff header
 ```
 
 ```
-docs: update README with MCP setup instructions
+docs: update README with CLI setup instructions
 
-- Add MCP server section to getting started guide
-- Add .mcp.json to project structure diagram
+- Add CLI usage section to getting started guide
+- Update project structure diagram for new layout
 ```
 
 ## Explanation and Reporting

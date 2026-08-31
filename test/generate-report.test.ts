@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { writeFileSync, existsSync, unlinkSync, mkdirSync, rmSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { slugify, validateFile, validatePR, getReportsDir, writeReport, listReportFiles, readReportContent } from "../src/mcp-server.ts";
+import { slugify, validateFile, validatePR, getReportsDir, writeReport, listReportFiles, readReportContent } from "../src/generate-report.ts";
 import { renderReport } from "../src/render/render-report.ts";
 import type { PRData, PRFile } from "../src/types.ts";
 import { computeDiff, computeAddedDiff, computeDeletedDiff } from "../src/diff.ts";
@@ -498,5 +498,87 @@ describe("project-scoped reports directory", () => {
     const files = listReportFiles(emptyProject);
     expect(files).toEqual([]);
     rmSync(emptyProject, { recursive: true, force: true });
+  });
+});
+
+// ── CLI integration ───────────────────────────────────────────
+
+describe("CLI integration", () => {
+  const CLI_PROJECT = resolve(import.meta.dir, "test-cli-project");
+  const SCRIPT = resolve(import.meta.dir, "..", "src", "generate-report.ts");
+
+  beforeAll(() => {
+    if (existsSync(CLI_PROJECT)) rmSync(CLI_PROJECT, { recursive: true, force: true });
+    mkdirSync(CLI_PROJECT, { recursive: true });
+    mkdirSync(resolve(CLI_PROJECT, "src"), { recursive: true });
+    writeFileSync(resolve(CLI_PROJECT, "src", "main.ts"), "const x = 1;\n", "utf-8");
+  });
+
+  afterAll(() => {
+    if (existsSync(CLI_PROJECT)) rmSync(CLI_PROJECT, { recursive: true, force: true });
+  });
+
+  function runCli(jsonStr: string): { exitCode: number; stdout: string; stderr: string } {
+    const escaped = jsonStr.replace(/'/g, "'\\''");
+    const proc = Bun.spawnSync(["sh", "-c", `printf '%s' '${escaped}' | bun run '${SCRIPT}'`], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return {
+      exitCode: proc.exitCode,
+      stdout: proc.stdout.toString().trim(),
+      stderr: proc.stderr.toString(),
+    };
+  }
+
+  it("generates a report from stdin JSON and prints the path", () => {
+    const prJson = JSON.stringify({
+      projectPath: CLI_PROJECT,
+      title: "CLI Test PR",
+      description: "Test the CLI entry point.",
+      branch: "test/cli",
+      files: [
+        {
+          path: "src/main.ts",
+          status: "modified",
+          edits: [{ search: "const x = 1;", replace: "const x = 42;" }],
+          explanation: "Update x value",
+        },
+      ],
+    });
+
+    const result = runCli(prJson);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(CLI_PROJECT);
+    expect(result.stdout).toContain(".html");
+    expect(existsSync(result.stdout)).toBe(true);
+  });
+
+  it("exits with error on empty stdin", () => {
+    const result = runCli("");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("No input provided");
+  });
+
+  it("exits with error on invalid JSON", () => {
+    const result = runCli("not json");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Invalid JSON");
+  });
+
+  it("exits with error on validation failure", () => {
+    const prJson = JSON.stringify({
+      projectPath: CLI_PROJECT,
+      title: "",
+      description: "d",
+      branch: "b",
+      files: [
+        { path: "src/main.ts", status: "added", content: "x", explanation: "e" },
+      ],
+    });
+
+    const result = runCli(prJson);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Validation error");
   });
 });
