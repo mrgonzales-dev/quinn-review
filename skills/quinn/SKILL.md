@@ -25,7 +25,7 @@ Quinn runs as a CLI script. Pipe PR JSON to stdin. Quinn writes the report to di
 echo '{"projectPath":"/path/to/project","title":"...","description":"...","branch":"...","files":[...]}' | bun run src/generate-report.ts
 ```
 
-The script path is relative to the Quinn project root. The last argument is the path to the Quinn repository on your system.
+Run the command from the Quinn project root directory. If you are not in the Quinn directory, use the absolute path to `generate-report.ts` instead.
 
 **Output (stdout):** The full path to the generated report file.
 **Errors (stderr):** The process exits with code 1 on error.
