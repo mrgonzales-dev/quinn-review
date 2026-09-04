@@ -44,12 +44,11 @@ curl -fsSL https://bun.sh/install | bash
 
 ### Install
 
-Clone the repository and install dependencies:
+Clone the repository:
 
 ```bash
 git clone https://github.com/mrgonzales-dev/quinn-review.git
 cd quinn-review
-bun install
 ```
 
 ### Run the CLI
@@ -114,11 +113,9 @@ quinn-review/
 │   ├── render/
 │   │   ├── render-report.ts   # Full HTML report renderer
 │   │   └── render-diff.ts     # Diff table renderer
-│   └── assets/                # Logo and images
 ├── skills/quinn/SKILL.md      # Full skill documentation for AI agents
 ├── AGENTS.md                  # Agent behavior rules
 ├── plugin.json                # Agent auto-discovery manifest
-├── package.json               # Project metadata
 └── test/generate-report.test.ts  # Test suite
 ```
 

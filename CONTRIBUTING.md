@@ -14,13 +14,7 @@ Thanks for your interest in Quinn. This project is open source and welcomes cont
 
 1. Install [Bun](https://bun.sh).
 2. Clone the repo.
-3. Install dependencies:
-
-```bash
-bun install
-```
-
-4. Test the CLI:
+3. Test the CLI:
 
 ```bash
 echo '{"projectPath":".","title":"Test","description":"Test","branch":"test","files":[{"path":"src/test.ts","status":"added","content":"const x = 1;\n","explanation":"test"}]}' | bun run src/generate-report.ts
@@ -61,7 +55,6 @@ src/
   render/
     render-report.ts   # Full HTML report renderer
     render-diff.ts     # Diff table renderer
-  assets/              # Logo and images
 skills/quinn/SKILL.md  # Skill documentation for AI agents
 test/generate-report.test.ts  # Test suite
 ```
