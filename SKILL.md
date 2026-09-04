@@ -32,11 +32,11 @@ Run the command from the Quinn project root directory. If you are not in the Qui
 
 ### Listing reports
 
-To list existing reports for a project, use the `listReportFiles` function or check the `reports/` directory inside the project path. Reports are sorted by newest first.
+Check the `reports/` directory at the root of the target project. Reports are sorted by newest first.
 
 ### Reading a report
 
-To read a report file, open the HTML file directly from the `reports/` directory. Each file is self-contained HTML with inline CSS.
+Open the HTML file directly from the `reports/` directory. Each file is self-contained HTML with inline CSS.
 
 ## PR Schema
 
@@ -111,14 +111,14 @@ For `deleted` files: send `content` (can be empty string). Quinn reads the exist
 - **status**: `added` for new files, `modified` for changed files, `deleted` for removed files.
 - **content**: Full new file content as a string. Use for `added` files, `deleted` files, or full rewrites.
 - **edits**: Array of `{search, replace}` objects. Use for `modified` files when you only change specific parts. Each `search` must be unique in the file. Only valid with `status: "modified"`.
-- **additions / deletions**: Auto-computed by the server from the diff. Do not send these.
+- **additions / deletions**: Auto-computed from the diff. Do not send these.
 - **explanation**: One or two sentences. Why you made this specific change to this file.
 
 Each file must have either `content` or `edits` (not both). The script computes the diff from the existing file on disk.
 
 ## Report output
 
-Reports are written to `{projectPath}/reports/` when `projectPath` is provided. When `projectPath` is absent, reports fall back to `reports/` in the current working directory. Each report is a self-contained HTML file with inline CSS. The filename format is `{timestamp}-{slug}.html`.
+Reports are written to the `reports/` directory at the root of the target project (`projectPath`). When `projectPath` is absent, reports fall back to `reports/` in the current working directory. Each report is a self-contained HTML file with inline CSS. The filename format is `{timestamp}-{slug}.html`.
 
 Open the report file in any browser to view the diffs. The report shows:
 - PR title, branch, label, and description
