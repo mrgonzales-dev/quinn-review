@@ -25,6 +25,13 @@
           <span class="sr-only">Filter proposals</span>
           <input id="search" type="search" placeholder="Filter proposals…" autocomplete="off" />
         </label>
+        <div class="filter-bar">
+          <select id="reviewed-filter" aria-label="Filter by review status">
+            <option value="all">All</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="unreviewed">Needs review</option>
+          </select>
+        </div>
       </header>
       <div id="pr-list" class="pr-list" role="list"></div>
       <div id="loading" class="loading hidden" aria-hidden="true">
@@ -59,6 +66,7 @@
             <div class="toolbar-right">
               <button type="button" id="expand-all" class="btn ghost">Expand all</button>
               <button type="button" id="collapse-all" class="btn ghost">Collapse all</button>
+              <button type="button" id="mark-reviewed" class="btn primary">Mark reviewed</button>
               <button type="button" id="delete-report" class="btn danger-btn">Delete</button>
             </div>
           </div>

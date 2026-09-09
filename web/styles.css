@@ -142,6 +142,26 @@ code {
   box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
+.filter-bar {
+  margin-top: 10px;
+}
+
+.filter-bar select {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--text);
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-bar select:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
 .pr-list {
   flex: 1;
   overflow: auto;
@@ -216,6 +236,19 @@ code {
   align-items: center;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.pr-item.reviewed .pr-item-title::after {
+  content: "Reviewed";
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  vertical-align: middle;
 }
 
 .sidebar-footer {

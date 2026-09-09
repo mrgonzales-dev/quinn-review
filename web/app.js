@@ -3,6 +3,7 @@ const state = {
   selectedId: null,
   report: null,
   query: "",
+  reviewedFilter: "all",
 };
 
 const els = {
@@ -20,8 +21,10 @@ const els = {
   fileCards: document.getElementById("file-cards"),
   expandAll: document.getElementById("expand-all"),
   collapseAll: document.getElementById("collapse-all"),
+  markReviewed: document.getElementById("mark-reviewed"),
   deleteReport: document.getElementById("delete-report"),
   loading: document.getElementById("loading"),
+  reviewedFilter: document.getElementById("reviewed-filter"),
 };
 
 function escapeHtml(value) {
@@ -60,8 +63,10 @@ async function fetchJson(url) {
 
 function filteredPrs() {
   const q = state.query.trim().toLowerCase();
-  if (!q) return state.prs;
   return state.prs.filter((pr) => {
+    if (state.reviewedFilter === "reviewed" && !pr.reviewed) return false;
+    if (state.reviewedFilter === "unreviewed" && pr.reviewed) return false;
+    if (!q) return true;
     const hay = `${pr.title} ${pr.branch} ${pr.label || ""} ${pr.description}`.toLowerCase();
     return hay.includes(q);
   });
@@ -79,8 +84,9 @@ function renderList() {
   els.list.innerHTML = items
     .map((pr, index) => {
       const active = pr.id === state.selectedId ? "active" : "";
+      const reviewed = pr.reviewed ? "reviewed" : "";
       return `
-        <button type="button" class="pr-item ${active}" role="listitem" data-id="${escapeHtml(pr.id)}" style="animation-delay:${Math.min(index, 12) * 40}ms">
+        <button type="button" class="pr-item ${active} ${reviewed}" role="listitem" data-id="${escapeHtml(pr.id)}" style="animation-delay:${Math.min(index, 12) * 40}ms">
           <div class="pr-item-title">${escapeHtml(pr.title)}</div>
           <div class="pr-item-meta">
             <span>${escapeHtml(pr.branch)}</span>
@@ -170,6 +176,8 @@ function renderDetail() {
     .join("");
 
   highlightDiffs(files);
+
+  els.markReviewed.textContent = pr.reviewed ? "Unmark reviewed" : "Mark reviewed";
 }
 
 const EXT_LANG_MAP = {
@@ -280,6 +288,11 @@ els.search.addEventListener("input", () => {
   renderList();
 });
 
+els.reviewedFilter.addEventListener("change", () => {
+  state.reviewedFilter = els.reviewedFilter.value;
+  renderList();
+});
+
 els.refresh.addEventListener("click", () => {
   loadPrs().catch((err) => {
     els.count.textContent = err.message;
@@ -288,6 +301,22 @@ els.refresh.addEventListener("click", () => {
 
 els.expandAll.addEventListener("click", () => setAllExpanded(true));
 els.collapseAll.addEventListener("click", () => setAllExpanded(false));
+
+els.markReviewed.addEventListener("click", async () => {
+  if (!state.selectedId || !state.report) return;
+  const next = !state.report.reviewed;
+  const res = await fetch(`/api/prs/${encodeURIComponent(state.selectedId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewed: next }),
+  });
+  if (!res.ok) return;
+  state.report.reviewed = next;
+  const pr = state.prs.find((p) => p.id === state.selectedId);
+  if (pr) pr.reviewed = next;
+  renderList();
+  renderDetail();
+});
 
 els.deleteReport.addEventListener("click", async () => {
   if (!state.selectedId) return;

@@ -83,6 +83,7 @@ def list_reports(project_path: str | None = None) -> list[dict[str, Any]]:
                 "additions": data.get("additions", 0),
                 "deletions": data.get("deletions", 0),
                 "fileCount": len(data.get("files") or []),
+                "reviewed": data.get("reviewed", False),
             }
         )
     return reports
@@ -109,3 +110,31 @@ def read_report(report_id: str, project_path: str | None = None) -> dict[str, An
             except (OSError, json.JSONDecodeError):
                 return None
     return None
+
+
+def find_report_path(report_id: str, project_path: str | None = None) -> Path | None:
+    directory = get_reports_dir(project_path)
+    candidates = [
+        directory / f"{report_id}.json",
+        directory / report_id,
+    ]
+    for path in candidates:
+        if path.is_file() and path.suffix == ".json":
+            return path
+    for path in directory.glob("*.json"):
+        if path.stem == report_id:
+            return path
+    return None
+
+
+def update_report(report_id: str, updates: dict[str, Any], project_path: str | None = None) -> dict[str, Any] | None:
+    path = find_report_path(report_id, project_path)
+    if path is None:
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    data.update(updates)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return data

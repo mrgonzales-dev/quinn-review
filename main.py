@@ -15,13 +15,13 @@ import os
 import sys
 from pathlib import Path
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from quinn.storage import get_reports_dir, list_reports, read_report
+from quinn.storage import get_reports_dir, list_reports, read_report, update_report
 
 WEB_DIR = ROOT / "web"
 DEFAULT_PORT = 2428
@@ -79,6 +79,21 @@ def create_app(project_path: str | None) -> Flask:
                     return jsonify({"error": "Failed to delete report"}), 500
                 return jsonify({"ok": True})
         return jsonify({"error": "Report not found"}), 404
+
+    @app.patch("/api/prs/<path:report_id>")
+    def api_patch_pr(report_id: str):
+        if ".." in report_id.split("/"):
+            return jsonify({"error": "Report not found"}), 404
+        body = request.get_json(silent=True) or {}
+        updates = {}
+        if "reviewed" in body:
+            updates["reviewed"] = bool(body["reviewed"])
+        if not updates:
+            return jsonify({"error": "No valid fields to update"}), 400
+        result = update_report(report_id, updates, app.config["PROJECT_PATH"])
+        if result is None:
+            return jsonify({"error": "Report not found"}), 404
+        return jsonify(result)
 
     return app
 

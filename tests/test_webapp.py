@@ -89,6 +89,39 @@ class ApiTests(unittest.TestCase):
         res = self.client.delete("/api/prs/does-not-exist")
         self.assertEqual(res.status_code, 404)
 
+    def test_mark_reviewed(self):
+        res = self.client.get("/api/prs")
+        report_id = res.get_json()["prs"][0]["id"]
+
+        patch = self.client.patch(
+            f"/api/prs/{report_id}",
+            json={"reviewed": True},
+        )
+        self.assertEqual(patch.status_code, 200)
+        self.assertTrue(patch.get_json()["reviewed"])
+
+        detail = self.client.get(f"/api/prs/{report_id}")
+        self.assertTrue(detail.get_json()["reviewed"])
+
+    def test_mark_unreviewed(self):
+        res = self.client.get("/api/prs")
+        report_id = res.get_json()["prs"][0]["id"]
+
+        self.client.patch(f"/api/prs/{report_id}", json={"reviewed": True})
+        patch = self.client.patch(
+            f"/api/prs/{report_id}",
+            json={"reviewed": False},
+        )
+        self.assertEqual(patch.status_code, 200)
+        self.assertFalse(patch.get_json()["reviewed"])
+
+    def test_patch_missing_report(self):
+        res = self.client.patch(
+            "/api/prs/does-not-exist",
+            json={"reviewed": True},
+        )
+        self.assertEqual(res.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()
