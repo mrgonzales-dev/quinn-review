@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quinn — PR Review</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/styles.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlightjs@9.12.0/styles/github-dark.min.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Pull requests">
+      <header class="sidebar-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <p class="brand-name">Quinn</p>
+            <p class="brand-sub">PR Review</p>
+          </div>
+        </div>
+        <label class="search-wrap">
+          <span class="sr-only">Filter proposals</span>
+          <input id="search" type="search" placeholder="Filter proposals…" autocomplete="off" />
+        </label>
+      </header>
+      <div id="pr-list" class="pr-list" role="list"></div>
+      <div id="loading" class="loading hidden" aria-hidden="true">
+        <span class="spinner" aria-hidden="true"></span>
+        <span class="loading-text">Loading…</span>
+      </div>
+      <footer class="sidebar-footer">
+        <button type="button" id="refresh-btn" class="btn ghost">Refresh</button>
+        <span id="pr-count" class="muted"></span>
+      </footer>
+    </aside>
+
+    <main class="main" id="main">
+      <section id="empty-state" class="empty-state">
+        <div class="empty-card">
+          <h1>No proposal selected</h1>
+          <p>Generate a report with <code>generate_report.py</code>, then pick it from the list.</p>
+        </div>
+      </section>
+
+      <section id="detail" class="detail hidden" hidden>
+        <header class="detail-header">
+          <div class="detail-top">
+            <h1 id="pr-title"></h1>
+            <div id="pr-meta" class="pr-meta"></div>
+          </div>
+          <p id="pr-description" class="pr-description"></p>
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <span id="files-summary" class="muted"></span>
+            </div>
+            <div class="toolbar-right">
+              <button type="button" id="expand-all" class="btn ghost">Expand all</button>
+              <button type="button" id="collapse-all" class="btn ghost">Collapse all</button>
+              <button type="button" id="delete-report" class="btn danger-btn">Delete</button>
+              <button type="button" id="mark-reviewed" class="btn primary">Mark reviewed</button>
+            </div>
+          </div>
+        </header>
+        <nav id="file-nav" class="file-nav" aria-label="Changed files"></nav>
+        <div id="approval-summary" class="approval-summary hidden"></div>
+        <div id="file-cards" class="file-cards"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/highlightjs@9.12.0/highlight.min.js"></script>
+  <script src="/assets/app.js" type="module"></script>
+</body>
+</html>
