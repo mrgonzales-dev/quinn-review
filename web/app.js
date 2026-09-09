@@ -25,6 +25,7 @@ const els = {
   deleteReport: document.getElementById("delete-report"),
   loading: document.getElementById("loading"),
   reviewedFilter: document.getElementById("reviewed-filter"),
+  copyMarkdown: document.getElementById("copy-markdown"),
 };
 
 function escapeHtml(value) {
@@ -180,6 +181,41 @@ function renderDetail() {
   els.markReviewed.textContent = pr.reviewed ? "Unmark reviewed" : "Mark reviewed";
 }
 
+function reportToMarkdown(pr) {
+  const lines = [];
+  lines.push(`# ${pr.title}`);
+  lines.push("");
+  lines.push(`- **Branch:** \`${pr.branch}\``);
+  if (pr.label) lines.push(`- **Label:** ${pr.label}`);
+  lines.push(`- **Additions:** +${pr.additions ?? 0}`);
+  lines.push(`- **Deletions:** -${pr.deletions ?? 0}`);
+  if (pr.reviewed) lines.push(`- **Reviewed:** yes`);
+  if (pr.generatedAt) lines.push(`- **Generated:** ${pr.generatedAt}`);
+  lines.push("");
+  lines.push(`## Description`);
+  lines.push("");
+  lines.push(pr.description || "");
+  lines.push("");
+  lines.push(`## Files (${pr.files?.length || 0})`);
+  lines.push("");
+  for (const file of pr.files || []) {
+    lines.push(`### \`${file.path}\``);
+    lines.push("");
+    lines.push(`- **Status:** ${file.status}`);
+    lines.push(`- **Changes:** +${file.additions} -${file.deletions}`);
+    lines.push(`- **Explanation:** ${file.explanation}`);
+    lines.push("");
+    lines.push("```diff");
+    for (const line of file.diff || []) {
+      const sign = line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
+      lines.push(`${sign} ${line.content}`);
+    }
+    lines.push("```");
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 const EXT_LANG_MAP = {
   js: "javascript", mjs: "javascript", cjs: "javascript",
   ts: "typescript", tsx: "typescript",
@@ -316,6 +352,23 @@ els.markReviewed.addEventListener("click", async () => {
   if (pr) pr.reviewed = next;
   renderList();
   renderDetail();
+});
+
+els.copyMarkdown.addEventListener("click", async () => {
+  if (!state.report) return;
+  const md = reportToMarkdown(state.report);
+  try {
+    await navigator.clipboard.writeText(md);
+    els.copyMarkdown.textContent = "Copied!";
+    setTimeout(() => {
+      els.copyMarkdown.textContent = "Copy as markdown";
+    }, 2000);
+  } catch (e) {
+    els.copyMarkdown.textContent = "Copy failed";
+    setTimeout(() => {
+      els.copyMarkdown.textContent = "Copy as markdown";
+    }, 2000);
+  }
 });
 
 els.deleteReport.addEventListener("click", async () => {
