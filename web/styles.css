@@ -142,24 +142,32 @@ code {
   box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
-.filter-bar {
+.filter-pills {
+  display: flex;
+  gap: 6px;
   margin-top: 10px;
 }
 
-.filter-bar select {
-  width: 100%;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px 10px;
-  color: var(--text);
-  outline: none;
+.filter-pill {
   cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  transition: background 140ms var(--ease), color 140ms var(--ease), border-color 140ms var(--ease);
 }
 
-.filter-bar select:focus {
+.filter-pill:hover {
+  color: var(--text);
+  border-color: var(--border-soft);
+}
+
+.filter-pill.active {
+  background: var(--accent-dim);
+  color: var(--accent);
   border-color: var(--accent-border);
-  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
 .pr-list {

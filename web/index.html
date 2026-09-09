@@ -25,12 +25,10 @@
           <span class="sr-only">Filter proposals</span>
           <input id="search" type="search" placeholder="Filter proposals…" autocomplete="off" />
         </label>
-        <div class="filter-bar">
-          <select id="reviewed-filter" aria-label="Filter by review status">
-            <option value="all">All</option>
-            <option value="reviewed">Reviewed</option>
-            <option value="unreviewed">Needs review</option>
-          </select>
+        <div class="filter-pills" role="group" aria-label="Filter by review status">
+          <button type="button" class="filter-pill active" data-filter="all">All</button>
+          <button type="button" class="filter-pill" data-filter="reviewed">Reviewed</button>
+          <button type="button" class="filter-pill" data-filter="unreviewed">Needs review</button>
         </div>
       </header>
       <div id="pr-list" class="pr-list" role="list"></div>

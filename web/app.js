@@ -24,8 +24,8 @@ const els = {
   markReviewed: document.getElementById("mark-reviewed"),
   deleteReport: document.getElementById("delete-report"),
   loading: document.getElementById("loading"),
-  reviewedFilter: document.getElementById("reviewed-filter"),
   copyMarkdown: document.getElementById("copy-markdown"),
+  filterPills: document.querySelectorAll(".filter-pill"),
 };
 
 function escapeHtml(value) {
@@ -324,9 +324,12 @@ els.search.addEventListener("input", () => {
   renderList();
 });
 
-els.reviewedFilter.addEventListener("change", () => {
-  state.reviewedFilter = els.reviewedFilter.value;
-  renderList();
+els.filterPills.forEach((pill) => {
+  pill.addEventListener("click", () => {
+    state.reviewedFilter = pill.dataset.filter;
+    els.filterPills.forEach((p) => p.classList.toggle("active", p === pill));
+    renderList();
+  });
 });
 
 els.refresh.addEventListener("click", () => {
