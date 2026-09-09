@@ -218,19 +218,6 @@ code {
   font-size: 12px;
 }
 
-.pr-item.reviewed .pr-item-title::after {
-  content: "Reviewed";
-  margin-left: 8px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-dim);
-  border: 1px solid var(--accent-border);
-  border-radius: 999px;
-  padding: 1px 7px;
-  vertical-align: middle;
-}
-
 .sidebar-footer {
   display: flex;
   align-items: center;
@@ -506,83 +493,6 @@ code {
   font-size: 12px;
   font-family: var(--mono);
   flex-shrink: 0;
-}
-
-.file-approval {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.approve-btn,
-.reject-btn {
-  cursor: pointer;
-  border: 1px solid var(--border);
-  background: var(--bg-panel);
-  border-radius: 6px;
-  width: 26px;
-  height: 26px;
-  font-size: 14px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: background 140ms var(--ease), border-color 140ms var(--ease);
-}
-
-.approve-btn {
-  color: var(--text-muted);
-}
-
-.reject-btn {
-  color: var(--text-muted);
-}
-
-.approve-btn:hover {
-  border-color: #3fb950;
-  color: #3fb950;
-}
-
-.reject-btn:hover {
-  border-color: #f85149;
-  color: #f85149;
-}
-
-.approve-btn.active {
-  background: var(--added-bg);
-  border-color: #3fb950;
-  color: #3fb950;
-}
-
-.reject-btn.active {
-  background: var(--removed-bg);
-  border-color: #f85149;
-  color: #f85149;
-}
-
-.approval-summary {
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  font-size: 13px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.approval-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
-}
-
-.approval-group code {
-  font-family: var(--mono);
-  font-size: 12px;
 }
 
 .chevron {

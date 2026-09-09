@@ -20,10 +20,8 @@ const els = {
   fileCards: document.getElementById("file-cards"),
   expandAll: document.getElementById("expand-all"),
   collapseAll: document.getElementById("collapse-all"),
-  markReviewed: document.getElementById("mark-reviewed"),
   deleteReport: document.getElementById("delete-report"),
   loading: document.getElementById("loading"),
-  approvalSummary: document.getElementById("approval-summary"),
 };
 
 function escapeHtml(value) {
@@ -33,45 +31,6 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
-}
-
-function reviewedKey(id) {
-  return `quinn:reviewed:${id}`;
-}
-
-function isReviewed(id) {
-  return localStorage.getItem(reviewedKey(id)) === "1";
-}
-
-function setReviewed(id, value) {
-  localStorage.setItem(reviewedKey(id), value ? "1" : "0");
-}
-
-function approvalKey(reportId, filePath) {
-  return `quinn:approval:${reportId}:${filePath}`;
-}
-
-function getApproval(reportId, filePath) {
-  return localStorage.getItem(approvalKey(reportId, filePath));
-}
-
-function setApproval(reportId, filePath, value) {
-  if (value) {
-    localStorage.setItem(approvalKey(reportId, filePath), value);
-  } else {
-    localStorage.removeItem(approvalKey(reportId, filePath));
-  }
-}
-
-function approvalSummary(reportId, files) {
-  const approved = [];
-  const rejected = [];
-  for (const file of files) {
-    const state = getApproval(reportId, file.path);
-    if (state === "approved") approved.push(file.path);
-    else if (state === "rejected") rejected.push(file.path);
-  }
-  return { approved, rejected };
 }
 
 function formatWhen(iso) {
@@ -120,9 +79,8 @@ function renderList() {
   els.list.innerHTML = items
     .map((pr, index) => {
       const active = pr.id === state.selectedId ? "active" : "";
-      const reviewed = isReviewed(pr.id) ? "reviewed" : "";
       return `
-        <button type="button" class="pr-item ${active} ${reviewed}" role="listitem" data-id="${escapeHtml(pr.id)}" style="animation-delay:${Math.min(index, 12) * 40}ms">
+        <button type="button" class="pr-item ${active}" role="listitem" data-id="${escapeHtml(pr.id)}" style="animation-delay:${Math.min(index, 12) * 40}ms">
           <div class="pr-item-title">${escapeHtml(pr.title)}</div>
           <div class="pr-item-meta">
             <span>${escapeHtml(pr.branch)}</span>
@@ -190,7 +148,6 @@ function renderDetail() {
 
   els.fileCards.innerHTML = files
     .map((file, index) => {
-      const current = getApproval(pr.id, file.path);
       return `
         <article class="file-card open" id="file-${index}" style="animation-delay:${Math.min(index, 10) * 45}ms">
           <button type="button" class="file-header" aria-expanded="true" data-toggle="${index}">
@@ -198,10 +155,6 @@ function renderDetail() {
             <span class="status ${escapeHtml(file.status)}">${escapeHtml(file.status)}</span>
             <span class="file-path">${escapeHtml(file.path)}</span>
             <span class="file-stats"><span class="plus">+${file.additions}</span><span class="minus">-${file.deletions}</span></span>
-            <span class="file-approval" data-approval-path="${escapeHtml(file.path)}">
-              <button type="button" class="approve-btn ${current === "approved" ? "active" : ""}" data-approve="${escapeHtml(file.path)}" title="Approve">&#10003;</button>
-              <button type="button" class="reject-btn ${current === "rejected" ? "active" : ""}" data-reject="${escapeHtml(file.path)}" title="Reject">&#10007;</button>
-            </span>
           </button>
           <div class="file-body">
             <div class="file-explanation">${escapeHtml(file.explanation)}</div>
@@ -216,11 +169,7 @@ function renderDetail() {
     })
     .join("");
 
-  renderApprovalSummary(pr.id, files);
-
   highlightDiffs(files);
-
-  els.markReviewed.textContent = isReviewed(pr.id) ? "Unmark reviewed" : "Mark reviewed";
 }
 
 const EXT_LANG_MAP = {
@@ -274,26 +223,6 @@ function highlightDiffs(files) {
       }
     });
   }
-}
-
-function renderApprovalSummary(reportId, files) {
-  const { approved, rejected } = approvalSummary(reportId, files);
-  if (!approved.length && !rejected.length) {
-    els.approvalSummary.classList.add("hidden");
-    els.approvalSummary.hidden = true;
-    return;
-  }
-  els.approvalSummary.classList.remove("hidden");
-  els.approvalSummary.hidden = false;
-
-  const parts = [];
-  if (approved.length) {
-    parts.push(`<span class="approval-group"><span class="plus">Approved (${approved.length}):</span> ${approved.map((p) => `<code>${escapeHtml(p)}</code>`).join(", ")}</span>`);
-  }
-  if (rejected.length) {
-    parts.push(`<span class="approval-group"><span class="minus">Rejected (${rejected.length}):</span> ${rejected.map((p) => `<code>${escapeHtml(p)}</code>`).join(", ")}</span>`);
-  }
-  els.approvalSummary.innerHTML = parts.join("");
 }
 
 async function loadPrs() {
@@ -360,14 +289,6 @@ els.refresh.addEventListener("click", () => {
 els.expandAll.addEventListener("click", () => setAllExpanded(true));
 els.collapseAll.addEventListener("click", () => setAllExpanded(false));
 
-els.markReviewed.addEventListener("click", () => {
-  if (!state.selectedId) return;
-  const next = !isReviewed(state.selectedId);
-  setReviewed(state.selectedId, next);
-  renderList();
-  renderDetail();
-});
-
 els.deleteReport.addEventListener("click", async () => {
   if (!state.selectedId) return;
   if (!confirm("Delete this report? This cannot be undone.")) return;
@@ -389,29 +310,6 @@ els.fileCards.addEventListener("click", (event) => {
     const open = !card.classList.contains("open");
     card.classList.toggle("open", open);
     toggleBtn.setAttribute("aria-expanded", open ? "true" : "false");
-    return;
-  }
-
-  const approveBtn = event.target.closest("[data-approve]");
-  if (approveBtn) {
-    if (!state.report) return;
-    const filePath = approveBtn.dataset.approve;
-    const current = getApproval(state.report.id, filePath);
-    const next = current === "approved" ? null : "approved";
-    setApproval(state.report.id, filePath, next);
-    renderDetail();
-    return;
-  }
-
-  const rejectBtn = event.target.closest("[data-reject]");
-  if (rejectBtn) {
-    if (!state.report) return;
-    const filePath = rejectBtn.dataset.reject;
-    const current = getApproval(state.report.id, filePath);
-    const next = current === "rejected" ? null : "rejected";
-    setApproval(state.report.id, filePath, next);
-    renderDetail();
-    return;
   }
 });
 
