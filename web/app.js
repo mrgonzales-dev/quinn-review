@@ -149,7 +149,7 @@ function renderDetail() {
   els.fileNav.innerHTML = files
     .map(
       (file, index) =>
-        `<a href="#file-${index}">${escapeHtml(file.path)}</a>`
+        `<a href="#file-${index}" data-file-index="${index}">${escapeHtml(file.path)}</a>`
     )
     .join("");
 
@@ -340,6 +340,18 @@ els.refresh.addEventListener("click", () => {
 
 els.expandAll.addEventListener("click", () => setAllExpanded(true));
 els.collapseAll.addEventListener("click", () => setAllExpanded(false));
+
+els.fileNav.addEventListener("click", (event) => {
+  const link = event.target.closest("a[data-file-index]");
+  if (!link) return;
+  event.preventDefault();
+  const index = link.dataset.fileIndex;
+  const card = document.getElementById(`file-${index}`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.classList.add("highlight-flash");
+  setTimeout(() => card.classList.remove("highlight-flash"), 2000);
+});
 
 els.markReviewed.addEventListener("click", async () => {
   if (!state.selectedId || !state.report) return;

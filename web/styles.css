@@ -466,6 +466,12 @@ code {
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(1, 4, 9, 0.25);
   animation: rise 420ms var(--ease) both;
+  transition: border-color 400ms var(--ease), box-shadow 400ms var(--ease);
+}
+
+.file-card.highlight-flash {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-border), 0 8px 24px rgba(1, 4, 9, 0.25);
 }
 
 .file-header {
