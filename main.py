@@ -10,8 +10,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import sys
 from pathlib import Path
 
@@ -21,7 +19,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from quinn.storage import get_reports_dir, list_reports, read_report, update_report
+from quinn.storage import find_report_path, list_reports, read_report, update_report
 
 WEB_DIR = ROOT / "web"
 DEFAULT_PORT = 2428
@@ -66,19 +64,14 @@ def create_app(project_path: str | None) -> Flask:
     def api_delete_pr(report_id: str):
         if ".." in report_id.split("/"):
             return jsonify({"error": "Report not found"}), 404
-        reports_dir = get_reports_dir(app.config["PROJECT_PATH"])
-        candidates = [
-            reports_dir / f"{report_id}.json",
-            reports_dir / report_id,
-        ]
-        for path in candidates:
-            if path.is_file() and path.suffix == ".json":
-                try:
-                    path.unlink()
-                except OSError:
-                    return jsonify({"error": "Failed to delete report"}), 500
-                return jsonify({"ok": True})
-        return jsonify({"error": "Report not found"}), 404
+        path = find_report_path(report_id, app.config["PROJECT_PATH"])
+        if path is None:
+            return jsonify({"error": "Report not found"}), 404
+        try:
+            path.unlink()
+        except OSError:
+            return jsonify({"error": "Failed to delete report"}), 500
+        return jsonify({"ok": True})
 
     @app.patch("/api/prs/<path:report_id>")
     def api_patch_pr(report_id: str):

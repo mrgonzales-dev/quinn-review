@@ -10,8 +10,6 @@
   --accent: #58a6ff;
   --accent-dim: rgba(88, 166, 255, 0.14);
   --accent-border: rgba(88, 166, 255, 0.35);
-  --info: #58a6ff;
-  --info-dim: rgba(88, 166, 255, 0.12);
   --warn: #d29922;
   --warn-dim: rgba(210, 153, 34, 0.14);
   --danger: #f85149;
@@ -335,9 +333,9 @@ code {
 
 .chip.branch {
   font-family: var(--mono);
-  color: var(--info);
-  background: var(--info-dim);
-  border-color: rgba(88, 166, 255, 0.3);
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
 }
 
 .chip.label {

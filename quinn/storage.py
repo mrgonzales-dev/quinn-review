@@ -22,22 +22,14 @@ def get_reports_dir(project_path: str | None = None) -> Path:
     return (base / "reports").resolve()
 
 
-def ensure_reports_dir(directory: Path) -> None:
-    directory.mkdir(parents=True, exist_ok=True)
-
-
-def generate_report_filename(title: str, when: datetime | None = None) -> str:
-    stamp = (when or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H-%M-%S-%fZ")
-    slug = slugify(title)[:60] or "report"
-    return f"{stamp}-{slug}.json"
-
-
 def write_report(pr: dict[str, Any], project_path: str | None = None) -> dict[str, str]:
     directory = get_reports_dir(project_path)
-    ensure_reports_dir(directory)
+    directory.mkdir(parents=True, exist_ok=True)
 
     generated_at = datetime.now(timezone.utc)
-    filename = generate_report_filename(pr["title"], generated_at)
+    stamp = generated_at.strftime("%Y-%m-%dT%H-%M-%S-%fZ")
+    slug = slugify(pr["title"])[:60] or "report"
+    filename = f"{stamp}-{slug}.json"
     filepath = directory / filename
 
     total_additions = sum(int(f.get("additions", 0)) for f in pr["files"])
@@ -89,29 +81,6 @@ def list_reports(project_path: str | None = None) -> list[dict[str, Any]]:
     return reports
 
 
-def read_report(report_id: str, project_path: str | None = None) -> dict[str, Any] | None:
-    directory = get_reports_dir(project_path)
-    # Accept with or without .json suffix
-    candidates = [
-        directory / f"{report_id}.json",
-        directory / report_id,
-    ]
-    for path in candidates:
-        if path.is_file() and path.suffix == ".json":
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                return None
-    # Fallback: match by stem
-    for path in directory.glob("*.json"):
-        if path.stem == report_id:
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                return None
-    return None
-
-
 def find_report_path(report_id: str, project_path: str | None = None) -> Path | None:
     directory = get_reports_dir(project_path)
     candidates = [
@@ -125,6 +94,16 @@ def find_report_path(report_id: str, project_path: str | None = None) -> Path | 
         if path.stem == report_id:
             return path
     return None
+
+
+def read_report(report_id: str, project_path: str | None = None) -> dict[str, Any] | None:
+    path = find_report_path(report_id, project_path)
+    if path is None:
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def update_report(report_id: str, updates: dict[str, Any], project_path: str | None = None) -> dict[str, Any] | None:
